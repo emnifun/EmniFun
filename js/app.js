@@ -6,6 +6,7 @@ import { isLoggedIn } from "./auth/auth.js";
 
 const views = [...document.querySelectorAll(".view")];
 const navLinks = [...document.querySelectorAll(".nav-link")];
+const viewLinks = [...document.querySelectorAll("[data-view]")];
 const gameArea = document.querySelector("#game-area");
 
 function showView(viewId) {
@@ -15,7 +16,7 @@ function showView(viewId) {
 }
 
 function renderGames() {
-  gameArea.innerHTML = 
+  gameArea.innerHTML =
     '<div class="card-grid">' +
       '<article class="card"><h3>Game 1</h3><p>The first puzzle slot is ready for future mechanics.</p><button class="button" data-game="game1">Play</button></article>' +
       '<article class="card"><h3>Game 2</h3><p>Another independent game slot for future development.</p><button class="button secondary" data-game="game2">Coming Soon</button></article>' +
@@ -29,7 +30,7 @@ function renderGames() {
 
 function renderStatistics() {
   const game1Stats = getGameStatistics("game1");
-  document.querySelector("#statistics-content").innerHTML = 
+  document.querySelector("#statistics-content").innerHTML =
     '<div class="stats-grid">' +
       '<div class="stat"><span>Current streak</span><strong>' + game1Stats.currentStreak + '</strong></div>' +
       '<div class="stat"><span>Longest streak</span><strong>' + game1Stats.longestStreak + '</strong></div>' +
@@ -40,8 +41,11 @@ function renderStatistics() {
 }
 
 function setupNavigation() {
-  navLinks.forEach((link) => {
-    link.addEventListener("click", () => showView(link.dataset.view));
+  viewLinks.forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      showView(link.dataset.view);
+    });
   });
 
   document.querySelectorAll("[data-go-games]").forEach((button) => {
