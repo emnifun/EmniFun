@@ -4,17 +4,65 @@ EmniFun is a beginner-friendly Indian-oriented puzzle platform built with simple
 
 ## Current phase: Game 1 data-driven prototype
 
-Game 1 is playable and its content is now data-driven. Game 2 and Game 3 remain independent Coming Soon placeholders.
+Game 1 is playable and its content is data-driven. Game 2 and Game 3 remain independent Coming Soon placeholders.
 
-## Where Game 1 data lives
+## Game 1 data architecture
 
 - data/game1/valid-guesses.json - comprehensive accepted five-letter guess vocabulary.
-- data/game1/answers.json - smaller set of words allowed to become puzzle answers.
+- data/game1/answers.json - separately curated words that may be selected as daily answers.
 - data/game1/puzzles.json - dated puzzle records containing the answer, five clues, and publication status.
-- js/services/puzzle-service.js - loads the JSON files once, selects the published puzzle for a date, and validates puzzle records.
-- js/games/game1/game1-logic.js - gameplay rules. It does not contain the puzzle answer or word list.
-- js/games/game1/game1-ui.js - displays the current puzzle supplied by the data/service layer.
-- scripts/generate-game1-vocabulary.mjs - rebuilds the generated five-letter vocabulary from the selected lexical sources.
+- js/services/puzzle-service.js - loads the JSON files and builds the vocabulary Set used by gameplay.
+- js/games/game1/game1-logic.js - gameplay rules; it does not contain the vocabulary or puzzle answer list.
+- js/games/game1/game1-ui.js - UI for the current puzzle.
+- scripts/generate-game1-vocabulary.mjs - deterministic vocabulary-generation pipeline.
+
+## Comprehensive five-letter vocabulary
+
+Game 1 does not use a small Wordle-sized vocabulary. The checked-in accepted-guess dataset currently contains 16,834 unique five-letter A-Z entries after deterministic source and quality filtering.
+
+There is deliberately no artificial maximum and no target such as 10,000, 15,000, 20,000, 40,000, or 50,000 words. If the selected high-quality sources contain more legitimate five-letter English words after filtering, the generator is allowed to include them. The final size is determined by source coverage and lexical quality rules.
+
+### Selected lexical sources
+
+Moby Words II is the broad base. Its single-word collection is intended to exclude proper names, acronyms, and compound words while retaining archaic words and significant variants. Its crossword files add established word-game entries, including inflected forms.
+
+Wordnik's open wordlist is used as an independent supplementary lexical source.
+
+Moby's names, places, acronyms/abbreviations, and common-word lists are used as classification/corroboration inputs rather than as additional vocabulary to blindly import.
+
+### Filtering policy
+
+The generator automatically:
+
+1. normalizes entries to lowercase;
+2. keeps exactly five ASCII alphabetic letters A-Z;
+3. deduplicates all selected source candidates;
+4. removes source-flagged proper names, places, acronyms, and abbreviations when they do not have support in Moby's single-word lexical base;
+5. removes only unmistakable malformed or short-form-like Moby artifacts when they also lack independent lexical corroboration;
+6. preserves uncommon, archaic, variant, and legitimate inflected words supported by the selected sources;
+7. never applies a numerical vocabulary cap.
+
+The goal is to distinguish a rare English word from an obvious non-word, code, abbreviation, or source-marked proper name. Being uncommon by itself is not a reason to remove a word.
+
+## Keep answers separate
+
+valid-guesses.json is the broad accepted-guess vocabulary.
+
+answers.json is a smaller curated subset of suitable daily-answer words. A word can therefore be a valid guess without ever being selected as a daily answer.
+
+The daily puzzle system remains independent from vocabulary size.
+
+## Refreshing the vocabulary
+
+From the repository root, run:
+
+    node scripts/generate-game1-vocabulary.mjs
+
+The script downloads the selected source lists, applies deterministic filtering, and rewrites data/game1/valid-guesses.json.
+
+The browser never calls a dictionary API at runtime. It loads the generated local JSON and converts the accepted words to a Set for membership checks.
+
+After regeneration, review the generated diff and run the data tests before committing.
 
 ## How to add tomorrow's puzzle
 
@@ -25,52 +73,14 @@ Game 1 is playable and its content is now data-driven. Game 2 and Game 3 remain 
 5. Set the date in YYYY-MM-DD format.
 6. Enter a five-letter answer that exists in answers.json and valid-guesses.json.
 7. Enter exactly five clue strings.
-8. Set status to published when the puzzle is ready for that date.
-9. Commit and push the JSON change to GitHub.
+8. Set status to published when it is ready for that date.
+9. Commit and push the JSON change.
 
-You do not need to edit game1-ui.js, game1-logic.js, app.js, HTML, or CSS to change a daily puzzle.
-
-## Puzzle status
-
-Supported values are draft, scheduled, published, and archived. Normal gameplay selects only a Game 1 record whose date matches the requested date and whose status is published.
-
-## Word validation
-
-Player input is normalized to uppercase, restricted to A-Z, limited to five letters, and checked against a Set built once from valid-guesses.json. Invalid words do not consume an attempt.
-
-## Comprehensive word vocabulary
-
-Game 1 no longer uses a small Wordle-sized vocabulary. The generated accepted vocabulary currently contains 16,371 unique five-letter entries from two independent lexical sources: Moby Words II and the Wordnik Wordlist.
-
-There is no artificial numerical maximum. The final size is determined by the selected sources and the documented filtering rules. The project does not intentionally stop at 10,000, 15,000, 20,000, or any other fixed number.
-
-The generator is scripts/generate-game1-vocabulary.mjs. It normalizes source entries, keeps exactly five ASCII letters, deduplicates them, and applies source-aware filtering for names, places, abbreviations, and acronyms. Legitimate uncommon, archaic, variant, and inflected words are retained when supported by the selected lexical sources.
-
-The final data file is bundled locally, so the game itself works without a dictionary API or network lookup. The accepted guess vocabulary remains separate from answers.json, which is a much smaller curated answer pool.
-
-To refresh the vocabulary, run:
-
-    node scripts/generate-game1-vocabulary.mjs
-
-Then review the generated diff and commit data/game1/valid-guesses.json.
+You do not need to edit the Game 1 UI or logic files to change a daily puzzle.
 
 ## Important static-site limitation
 
-This is still a static-site prototype. Any JSON shipped to the browser can be inspected by a user, so draft, scheduled, and future puzzle answers in puzzles.json are not truly private. Status filtering is an application rule, not a security boundary. A future backend should keep unpublished puzzle data server-side.
-
-## Game 1 gameplay architecture
-
-Website UI -> Game 1 UI -> Game 1 Logic -> Puzzle/Data Service -> Local JSON
-
-The same service boundary can later be changed to call a backend API without moving database code into the game UI.
-
-## Statistics
-
-Game 1 statistics remain prototype in-memory values. No persistent account or streak database was added in this task.
-
-## What remains postponed
-
-Production backend, database, persistent statistics, user authentication, administrator authentication, full admin dashboard, production puzzle scheduling, leaderboards, multiplayer, payments, advertisements, Game 2, Game 3, and the final visual redesign are not implemented.
+This prototype ships puzzle JSON to the browser. Users can inspect any shipped JSON, so draft, scheduled, and future puzzle answers stored in puzzles.json are not truly private. Status filtering is an application rule, not a security boundary. A future backend should keep unpublished puzzle data server-side.
 
 ## Running the site
 
