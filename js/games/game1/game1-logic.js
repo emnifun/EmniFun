@@ -4,7 +4,6 @@
  * The word vocabulary is supplied by the data service. This module does not
  * know where the vocabulary or puzzle answer came from.
  */
-import { VALID_GUESS_WORDS } from "./game1-data.js";
 
 export const GAME1_RESULT = Object.freeze({
   SOLVED: "SOLVED",
@@ -48,11 +47,9 @@ export function isEnglishFiveLetterWord(guess) {
 
 export function isValidGuess(guess, validWords) {
   const normalized = normalizeGuess(guess);
-  return (
-    isEnglishFiveLetterWord(normalized) &&
+  return isEnglishFiveLetterWord(normalized) &&
     validWords instanceof Set &&
-    validWords.has(normalized)
-  );
+    validWords.has(normalized);
 }
 
 /**
