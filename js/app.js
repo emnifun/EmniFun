@@ -12,6 +12,7 @@ const gameArea = document.querySelector("#game-area");
 function showView(viewId) {
   views.forEach((view) => view.classList.toggle("active", view.id === viewId));
   navLinks.forEach((link) => link.classList.toggle("active", link.dataset.view === viewId));
+  if (viewId === "statistics") renderStatistics();
 }
 
 function renderGames() {
@@ -22,7 +23,9 @@ function renderGames() {
       '<article class="card"><h3>Game 3</h3><p>A third independent game slot for future development.</p><button class="button secondary" data-game="game3">Coming Soon</button></article>' +
     '</div>';
 
-  gameArea.querySelector('[data-game="game1"]').addEventListener("click", () => renderGame1(gameArea));
+  gameArea.querySelector('[data-game="game1"]').addEventListener("click", () => {
+    void renderGame1(gameArea);
+  });
   gameArea.querySelector('[data-game="game2"]').addEventListener("click", () => renderGame2(gameArea));
   gameArea.querySelector('[data-game="game3"]').addEventListener("click", () => renderGame3(gameArea));
 }
