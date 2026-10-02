@@ -1,14 +1,14 @@
 /**
- * Data service boundary.
+ * Future backend API boundary.
  *
- * Today this returns local prototype data. Later it can call a real API
- * without making the game UI or rules understand the database.
+ * The prototype still uses local JSON. Keeping this module as the public API
+ * seam means the game can switch to a server later without changing its UI.
  */
-import { game1Puzzle } from "../games/game1/game1-data.js";
+import { getPublishedPuzzleForDate } from "./puzzle-service.js";
 
 export async function getPuzzle(gameId, puzzleDate) {
-  if (gameId === "game1" && puzzleDate === game1Puzzle.date) return game1Puzzle;
-  return null;
+  if (gameId !== "game1") return null;
+  return getPublishedPuzzleForDate(puzzleDate);
 }
 
 export async function saveGameResult(gameId, result) {
