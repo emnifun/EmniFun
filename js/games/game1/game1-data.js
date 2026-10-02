@@ -1,14 +1,30 @@
 /**
- * Game 1 data boundary.
+ * Game 1 local puzzle data.
  *
- * No real puzzle answers are stored here in Phase 1. The eventual puzzle data
- * should come from the puzzle/data service rather than from the UI.
+ * Temporary prototype data. A future backend can return the same shape.
  */
-
 export const GAME1_ID = "game1";
 
-export const game1Info = {
-  id: GAME1_ID,
-  name: "Game 1",
-  description: "The first EmniFun puzzle. Final mechanics will be added later."
+export const game1Puzzle = {
+  date: "2026-10-02",
+  game: GAME1_ID,
+  answer: "APPLE",
+  clues: [
+    "It is a fruit.",
+    "It can be red, green, or yellow.",
+    "It is commonly used in pies.",
+    "Its name begins with A.",
+    "It has five letters."
+  ],
+  status: "published"
 };
+
+export const VALID_GUESS_WORDS = [
+  "APPLE","HOUSE","CHAIR","BRAVE","CLOUD","GRAPE","PLANT","STONE",
+  "TRAIN","WATER","LIGHT","MOUSE","TABLE","SMILE","WORLD","BRAIN",
+  "SHEEP","GREEN","HEART","SUGAR","PAPER","PHONE","RIVER","SOUND",
+  "SWEET","BLACK","WHITE","LEMON","PEACH","MANGO","BREAD","CANDY",
+  "DREAM","EARTH","FRUIT"
+];
+
+export const ANSWER_WORDS = ["APPLE","HOUSE","CHAIR","GRAPE","PLANT"];
