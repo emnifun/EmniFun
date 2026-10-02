@@ -20,7 +20,7 @@ export function renderGame1(container) {
   let currentInput = "";
 
   container.innerHTML = `
-    <div class="game-shell">
+    <div class="game-shell" tabindex="0">
       <div class="game-header">
         <div>
           <p class="eyebrow">Daily Puzzle · ${game1Puzzle.date}</p>
@@ -29,7 +29,6 @@ export function renderGame1(container) {
         </div>
         <button class="button secondary" type="button" id="game1-back">Back to Games</button>
       </div>
-
       <div id="game1-message" class="game-message" aria-live="polite"></div>
       <div id="game1-board" class="game-board"></div>
       <div id="game1-clues" class="clue-list"></div>
@@ -40,6 +39,7 @@ export function renderGame1(container) {
     </div>
   `;
 
+  const root = container.querySelector(".game-shell");
   const board = container.querySelector("#game1-board");
   const clues = container.querySelector("#game1-clues");
   const keyboard = container.querySelector("#game1-keyboard");
@@ -51,14 +51,105 @@ export function renderGame1(container) {
     messageBox.textContent = message;
   }
 
+  function focusGame() {
+    root.focus();
+  }
+
+  function finishGame() {
+    const history = buildPlayerHistoryRecord(state, game1Puzzle);
+    recordGameResult(game1Puzzle.game, history);
+    void saveGameResult(game1Puzzle.game, history);
+    renderResult();
+  }
+
+  function renderResult() {
+    const labels = {
+      [GAME1_RESULT.SOLVED]: "Solved!",
+      [GAME1_RESULT.FAILED_CLOSE]: "Failed — Close",
+      [GAME1_RESULT.FAILED_HARD]: "Failed — Hard"
+    };
+
+    const details = {
+      [GAME1_RESULT.SOLVED]: "Solved within the six normal attempts.",
+      [GAME1_RESULT.FAILED_CLOSE]: "The seventh guess was close, but it does not count as a solve.",
+      [GAME1_RESULT.FAILED_HARD]: "The puzzle was not solved within the normal attempts."
+    };
+
+    resultBox.innerHTML = `
+      <div class="result-card result-${state.result.toLowerCase()}">
+        <h3>${labels[state.result]}</h3>
+        <p>${details[state.result]}</p>
+        <p>The answer was: <strong>${state.answer}</strong></p>
+      </div>`;
+    seeWhyButton.classList.remove("hidden");
+  }
+
+  function submitNormal() {
+    if (state.status !== "playing") return;
+    if (currentInput.length !== 5) {
+      showMessage("Enter a five-letter word.");
+      return;
+    }
+    if (!isValidGuess(currentInput)) {
+      showMessage("Not a valid word.");
+      return;
+    }
+
+    const result = submitNormalGuess(state, currentInput, game1Puzzle.answer);
+    currentInput = "";
+    showMessage(result.seventhStage ? "You used all six normal attempts." : "");
+    renderBoard();
+    renderClues();
+    if (result.solved) finishGame();
+    focusGame();
+  }
+
+  function submitSeventh() {
+    if (state.status !== "awaiting-seventh") return;
+    if (currentInput.length !== 5) {
+      showMessage("Enter a five-letter word.");
+      return;
+    }
+    if (!isValidGuess(currentInput)) {
+      showMessage("Not a valid word.");
+      return;
+    }
+
+    const result = submitSeventhGuess(state, currentInput, game1Puzzle.answer);
+    currentInput = "";
+    if (!result.ok) {
+      showMessage(result.message);
+      return;
+    }
+
+    showMessage(
+      result.result === GAME1_RESULT.FAILED_CLOSE
+        ? "Your final guess was close."
+        : "Your final guess was not close enough."
+    );
+    renderBoard();
+    finishGame();
+    focusGame();
+  }
+
+  function skipSeventh() {
+    if (state.status !== "awaiting-seventh") return;
+    skipSeventhAttempt(state, game1Puzzle.answer);
+    currentInput = "";
+    showMessage("You didn't take the final guess. Result: Failed — Hard.");
+    renderBoard();
+    finishGame();
+    focusGame();
+  }
+
   function renderBoard() {
     const rows = Array.from({ length: GAME1_CONFIG.normalAttempts }, (_, index) => {
       const guess = state.guesses[index] || "";
       const feedback = state.feedback[index];
-      const isCurrent = state.status === "playing" && index === state.attemptNumber - 1;
+      const current = state.status === "playing" && index === state.attemptNumber - 1;
 
       const cells = Array.from({ length: 5 }, (_, letterIndex) => {
-        const value = guess[letterIndex] || (isCurrent ? currentInput[letterIndex] || "" : "");
+        const value = guess[letterIndex] || (current ? currentInput[letterIndex] || "" : "");
         const status = feedback?.[letterIndex] || "";
         return `<span class="letter-cell ${status}">${value}</span>`;
       }).join("");
@@ -71,9 +162,7 @@ export function renderGame1(container) {
         <div class="seventh-stage">
           <div class="close-banner">You failed — but are you close?</div>
           <div class="game-row seventh-row">
-            ${Array.from({ length: 5 }, (_, i) =>
-              `<span class="letter-cell">${currentInput[i] || ""}</span>`
-            ).join("")}
+            ${Array.from({ length: 5 }, (_, i) => `<span class="letter-cell">${currentInput[i] || ""}</span>`).join("")}
           </div>
           <div class="seventh-actions">
             <button class="button" id="seventh-submit" type="button">Submit 7th Guess</button>
@@ -83,7 +172,6 @@ export function renderGame1(container) {
       : "";
 
     board.innerHTML = rows + seventh;
-
     board.querySelector("#seventh-submit")?.addEventListener("click", submitSeventh);
     board.querySelector("#seventh-skip")?.addEventListener("click", skipSeventh);
   }
@@ -117,147 +205,51 @@ export function renderGame1(container) {
         showMessage(result.message || "Clue revealed.");
         renderBoard();
         renderClues();
+        focusGame();
       });
     });
   }
 
   function renderKeyboard() {
     keyboard.innerHTML =
-      LETTERS.split("").map((letter) =>
-        `<button type="button" class="key" data-key="${letter}">${letter}</button>`
-      ).join("") +
+      LETTERS.split("").map((letter) => `<button type="button" class="key" data-key="${letter}">${letter}</button>`).join("") +
       '<button type="button" class="key wide" data-key="BACKSPACE">⌫</button>' +
       '<button type="button" class="key wide" data-key="ENTER">Enter</button>';
   }
 
-  function finishGame() {
-    const history = buildPlayerHistoryRecord(state, game1Puzzle);
-    recordGameResult(game1Puzzle.game, history);
-    void saveGameResult(game1Puzzle.game, history);
-    renderResult();
-  }
-
-  function renderResult() {
-    const labels = {
-      [GAME1_RESULT.SOLVED]: "Solved!",
-      [GAME1_RESULT.FAILED_CLOSE]: "Failed — Close",
-      [GAME1_RESULT.FAILED_HARD]: "Failed — Hard"
-    };
-
-    const details = {
-      [GAME1_RESULT.SOLVED]: "Solved within the six normal attempts.",
-      [GAME1_RESULT.FAILED_CLOSE]: "The seventh guess was close, but it does not count as a solve.",
-      [GAME1_RESULT.FAILED_HARD]: "The puzzle was not solved within the normal attempts."
-    };
-
-    resultBox.innerHTML = `
-      <div class="result-card result-${state.result.toLowerCase()}">
-        <h3>${labels[state.result]}</h3>
-        <p>${details[state.result]}</p>
-        <p>The answer was: <strong>${state.answer}</strong></p>
-      </div>`;
-
-    seeWhyButton.classList.remove("hidden");
-  }
-
-  function submitNormal() {
-    if (state.status !== "playing") return;
-
-    if (currentInput.length !== 5) {
-      showMessage("Enter a five-letter word.");
-      return;
-    }
-
-    if (!isValidGuess(currentInput)) {
-      showMessage("Not a valid word.");
-      return;
-    }
-
-    const result = submitNormalGuess(state, currentInput, game1Puzzle.answer);
-    currentInput = "";
-    showMessage(result.seventhStage ? "You used all six normal attempts." : "");
-    renderBoard();
-    renderClues();
-
-    if (result.solved) finishGame();
-  }
-
-  function submitSeventh() {
-    if (state.status !== "awaiting-seventh") return;
-
-    if (currentInput.length !== 5) {
-      showMessage("Enter a five-letter word.");
-      return;
-    }
-
-    if (!isValidGuess(currentInput)) {
-      showMessage("Not a valid word.");
-      return;
-    }
-
-    const result = submitSeventhGuess(state, currentInput, game1Puzzle.answer);
-    currentInput = "";
-
-    if (!result.ok) {
-      showMessage(result.message);
-      return;
-    }
-
-    showMessage(
-      result.result === GAME1_RESULT.FAILED_CLOSE
-        ? "Your final guess was close."
-        : "Your final guess was not close enough."
-    );
-    renderBoard();
-    finishGame();
-  }
-
-  function skipSeventh() {
-    if (state.status !== "awaiting-seventh") return;
-
-    skipSeventhAttempt(state, game1Puzzle.answer);
-    currentInput = "";
-    showMessage("You didn't take the final guess. Result: Failed — Hard.");
-    renderBoard();
-    finishGame();
-  }
-
-  keyboard.addEventListener("click", (event) => {
-    const key = event.target.closest("[data-key]")?.dataset.key;
-    if (!key || (state.status !== "playing" && state.status !== "awaiting-seventh")) return;
-
+  function addInputKey(key) {
+    if (state.status !== "playing" && state.status !== "awaiting-seventh") return;
     if (key === "BACKSPACE") {
       currentInput = currentInput.slice(0, -1);
     } else if (key === "ENTER") {
       state.status === "playing" ? submitNormal() : submitSeventh();
       return;
-    } else if (currentInput.length < 5) {
+    } else if (/^[A-Z]$/.test(key) && currentInput.length < 5) {
       currentInput += key;
     }
-
     renderBoard();
+  }
+
+  keyboard.addEventListener("click", (event) => {
+    const key = event.target.closest("[data-key]")?.dataset.key;
+    if (key) addInputKey(key);
+    focusGame();
   });
 
-  document.addEventListener("keydown", (event) => {
+  root.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       state.status === "playing" ? submitNormal() : submitSeventh();
       return;
     }
-
     if (event.key === "Backspace") {
-      if (state.status === "playing" || state.status === "awaiting-seventh") {
-        currentInput = currentInput.slice(0, -1);
-        renderBoard();
-      }
+      event.preventDefault();
+      addInputKey("BACKSPACE");
       return;
     }
-
-    if (/^[a-zA-Z]$/.test(event.key) &&
-        currentInput.length < 5 &&
-        (state.status === "playing" || state.status === "awaiting-seventh")) {
-      currentInput += event.key.toUpperCase();
-      renderBoard();
+    if (/^[a-zA-Z]$/.test(event.key)) {
+      event.preventDefault();
+      addInputKey(event.key.toUpperCase());
     }
   });
 
