@@ -1,0 +1,90 @@
+{
+  "description": "Local Game 1 puzzle records. Status values: draft, scheduled, published, archived.",
+  "game": "game1",
+  "puzzles": [
+    {
+      "id": "game1-2026-10-02",
+      "game": "game1",
+      "date": "2026-10-02",
+      "answer": "APPLE",
+      "clues": [
+        "It is a fruit.",
+        "It can be red, green, or yellow.",
+        "It is commonly used in pies.",
+        "Its name begins with A.",
+        "It has five letters."
+      ],
+      "status": "published"
+    },
+    {
+      "id": "game1-2026-10-03",
+      "game": "game1",
+      "date": "2026-10-03",
+      "answer": "HOUSE",
+      "clues": [
+        "People live in it.",
+        "It has rooms.",
+        "It usually has a door.",
+        "It can have a roof.",
+        "It is a place to live."
+      ],
+      "status": "published"
+    },
+    {
+      "id": "game1-2026-10-04",
+      "game": "game1",
+      "date": "2026-10-04",
+      "answer": "TRAIN",
+      "clues": [
+        "It travels on tracks.",
+        "It carries passengers or goods.",
+        "It often has many carriages.",
+        "It stops at stations.",
+        "It has five letters."
+      ],
+      "status": "published"
+    },
+    {
+      "id": "game1-2026-10-05",
+      "game": "game1",
+      "date": "2026-10-05",
+      "answer": "BRAVE",
+      "clues": [
+        "It describes courage.",
+        "It can describe a person.",
+        "It is the opposite of timid.",
+        "It begins with B.",
+        "It has five letters."
+      ],
+      "status": "draft"
+    },
+    {
+      "id": "game1-2026-10-06",
+      "game": "game1",
+      "date": "2026-10-06",
+      "answer": "CLOUD",
+      "clues": [
+        "It appears in the sky.",
+        "It can bring rain.",
+        "It can be white or dark.",
+        "It floats above the ground.",
+        "It has five letters."
+      ],
+      "status": "scheduled"
+    },
+    {
+      "id": "game1-2026-10-07",
+      "game": "game1",
+      "date": "2026-10-07",
+      "answer": "GRAPE",
+      "clues": [
+        "It is a fruit.",
+        "It grows in bunches.",
+        "It can be green or purple.",
+        "It can be used to make juice.",
+        "It has five letters."
+      ],
+      "status": "archived"
+    }
+  ]
+}
