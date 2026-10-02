@@ -1,5 +1,8 @@
 /**
  * Game 1 rules. UI code never belongs here.
+ *
+ * The word vocabulary is supplied by the data service. This module does not
+ * know where the vocabulary or puzzle answer came from.
  */
 import { VALID_GUESS_WORDS } from "./game1-data.js";
 
@@ -16,7 +19,7 @@ export const GAME1_CONFIG = Object.freeze({
   seventhAttemptMinimumCorrectPositions: 2
 });
 
-export function createGame1State() {
+export function createGame1State(validWords = new Set()) {
   return {
     attemptNumber: 1,
     guesses: [],
@@ -26,7 +29,8 @@ export function createGame1State() {
     seventhGuessUsed: false,
     status: "playing",
     result: null,
-    answer: null
+    answer: null,
+    validWords
   };
 }
 
@@ -34,13 +38,21 @@ export function normalizeGuess(value) {
   return String(value ?? "").trim().toUpperCase();
 }
 
-export function isEnglishFiveLetterWord(guess) {
-  return /^[A-Z]{5}$/.test(guess);
+export function sanitizeGuessInput(value) {
+  return normalizeGuess(value).replace(/[^A-Z]/g, "").slice(0, 5);
 }
 
-export function isValidGuess(guess) {
+export function isEnglishFiveLetterWord(guess) {
+  return /^[A-Z]{5}$/.test(normalizeGuess(guess));
+}
+
+export function isValidGuess(guess, validWords) {
   const normalized = normalizeGuess(guess);
-  return isEnglishFiveLetterWord(normalized) && VALID_GUESS_WORDS.includes(normalized);
+  return (
+    isEnglishFiveLetterWord(normalized) &&
+    validWords instanceof Set &&
+    validWords.has(normalized)
+  );
 }
 
 /**
@@ -92,8 +104,10 @@ export function useClue(state, clueNumber) {
 }
 
 function skipCurrentClue(state) {
-  if (state.attemptNumber <= GAME1_CONFIG.clueCount &&
-      state.clues[state.attemptNumber - 1] === "available") {
+  if (
+    state.attemptNumber <= GAME1_CONFIG.clueCount &&
+    state.clues[state.attemptNumber - 1] === "available"
+  ) {
     state.clues[state.attemptNumber - 1] = "skipped";
   }
 }
@@ -102,7 +116,9 @@ export function submitNormalGuess(state, guess, answer) {
   if (state.status !== "playing") return { ok: false, message: "The game has ended." };
 
   const normalized = normalizeGuess(guess);
-  if (!isValidGuess(normalized)) return { ok: false, message: "Not a valid word." };
+  if (!isValidGuess(normalized, state.validWords)) {
+    return { ok: false, message: "Not a valid word." };
+  }
 
   const feedback = evaluateGuess(normalized, answer);
   state.guesses.push(normalized);
@@ -128,10 +144,12 @@ export function submitNormalGuess(state, guess, answer) {
 export function evaluateSeventhAttempt(guess, answer) {
   const feedback = evaluateGuess(guess, answer);
   const correctPositions = feedback.filter((value) => value === "correct").length;
+
   return {
-    result: correctPositions >= GAME1_CONFIG.seventhAttemptMinimumCorrectPositions
-      ? GAME1_RESULT.FAILED_CLOSE
-      : GAME1_RESULT.FAILED_HARD,
+    result:
+      correctPositions >= GAME1_CONFIG.seventhAttemptMinimumCorrectPositions
+        ? GAME1_RESULT.FAILED_CLOSE
+        : GAME1_RESULT.FAILED_HARD,
     feedback,
     correctPositions
   };
@@ -150,7 +168,9 @@ export function submitSeventhGuess(state, guess, answer) {
   }
 
   const normalized = normalizeGuess(guess);
-  if (!isValidGuess(normalized)) return { ok: false, message: "Not a valid word." };
+  if (!isValidGuess(normalized, state.validWords)) {
+    return { ok: false, message: "Not a valid word." };
+  }
 
   const evaluation = evaluateSeventhAttempt(normalized, answer);
   state.status = "finished";
