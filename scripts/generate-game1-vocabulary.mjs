@@ -108,7 +108,15 @@ for (const word of combined) {
     mobyUppercaseAcronyms.has(word) ||
     mobyLowercaseAbbreviations.has(word);
 
-  if (sourceConflict && !mobySingleFive.has(word)) {
+  // Names, places, acronyms, and abbreviations are excluded unless the
+  // word is independently present in established crossword vocabulary.
+  // This keeps lexicalized terms such as LASER/CANON while removing
+  // name/code-only entries such as AARON, CCITT, or ACCRA.
+  const independentWordSupport =
+    mobyCrossword.has(word) ||
+    mobyCrosswordDelta.has(word);
+
+  if (sourceConflict && !independentWordSupport) {
     sourceFlaggedExcluded.add(word);
     continue;
   }
