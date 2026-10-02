@@ -12,13 +12,12 @@ const gameArea = document.querySelector("#game-area");
 function showView(viewId) {
   views.forEach((view) => view.classList.toggle("active", view.id === viewId));
   navLinks.forEach((link) => link.classList.toggle("active", link.dataset.view === viewId));
-  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function renderGames() {
   gameArea.innerHTML =
     '<div class="card-grid">' +
-      '<article class="card"><h3>Game 1</h3><p>The first puzzle slot is ready for future mechanics.</p><button class="button" data-game="game1">Play</button></article>' +
+      '<article class="card"><h3>Game 1</h3><p>The first puzzle is playable in this prototype.</p><button class="button" data-game="game1">Play</button></article>' +
       '<article class="card"><h3>Game 2</h3><p>Another independent game slot for future development.</p><button class="button secondary" data-game="game2">Coming Soon</button></article>' +
       '<article class="card"><h3>Game 3</h3><p>A third independent game slot for future development.</p><button class="button secondary" data-game="game3">Coming Soon</button></article>' +
     '</div>';
@@ -29,15 +28,16 @@ function renderGames() {
 }
 
 function renderStatistics() {
-  const game1Stats = getGameStatistics("game1");
+  const stats = getGameStatistics("game1");
   document.querySelector("#statistics-content").innerHTML =
     '<div class="stats-grid">' +
-      '<div class="stat"><span>Current streak</span><strong>' + game1Stats.currentStreak + '</strong></div>' +
-      '<div class="stat"><span>Longest streak</span><strong>' + game1Stats.longestStreak + '</strong></div>' +
-      '<div class="stat"><span>Total games</span><strong>' + game1Stats.totalGames + '</strong></div>' +
-      '<div class="stat"><span>Average guesses</span><strong>—</strong></div>' +
-    '</div>' +
-    '<p class="section-heading">These are placeholder values. Future statistics will be stored separately for each game.</p>';
+      '<div class="stat"><span>Current streak</span><strong>' + stats.currentStreak + '</strong></div>' +
+      '<div class="stat"><span>Maximum streak</span><strong>' + stats.longestStreak + '</strong></div>' +
+      '<div class="stat"><span>Total games</span><strong>' + stats.totalGames + '</strong></div>' +
+      '<div class="stat"><span>Solved</span><strong>' + stats.solved + '</strong></div>' +
+      '<div class="stat"><span>Failed — Close</span><strong>' + stats.failedClose + '</strong></div>' +
+      '<div class="stat"><span>Failed — Hard</span><strong>' + stats.failedHard + '</strong></div>' +
+    '</div>';
 }
 
 function setupNavigation() {
@@ -51,6 +51,8 @@ function setupNavigation() {
   document.querySelectorAll("[data-go-games]").forEach((button) => {
     button.addEventListener("click", () => showView("games"));
   });
+
+  gameArea.addEventListener("game1-back", () => renderGames());
 }
 
 function initialize() {
