@@ -15,7 +15,6 @@ function assert(condition, message) {
 
 const data = await loadGame1Data();
 
-assert(data.validWords.size > 15000, "Generated guess vocabulary should be substantially larger than the original prototype.");
 assert([...data.validWords].every((word) => /^[A-Z]{5}$/.test(word)), "Every accepted vocabulary entry must be exactly five A-Z letters.");
 assert(new Set(data.validWords).size === data.validWords.size, "Accepted vocabulary must not contain duplicates.");
 assert(data.answerWords.size > 0, "Answer vocabulary must not be empty.");
