@@ -1,77 +1,67 @@
 # EmniFun
 
-EmniFun is a beginner-friendly Indian-oriented puzzle platform. The project uses simple HTML, CSS, and JavaScript modules so that individual games can grow without becoming one giant application.
+EmniFun is a beginner-friendly Indian-oriented puzzle platform built with simple HTML, CSS, and JavaScript modules.
 
-## Current phase: Game 1 functional prototype
+## Current phase: Game 1 data-driven prototype
 
-The original Phase 1 shell remains in place. Game 1 now has a playable local prototype while Game 2 and Game 3 remain Coming Soon.
+Game 1 is playable and its content is now data-driven. Game 2 and Game 3 remain independent Coming Soon placeholders.
 
-## Game 1 rules
+## Where Game 1 data lives
 
-- The answer has 5 letters.
-- There are exactly 6 normal attempts.
-- Attempts 1-5 can be used either for a guess or that attempt's clue.
-- Attempt 6 is guess-only.
-- There are exactly 5 clues, one for each of attempts 1-5.
-- Using a clue consumes that attempt.
-- Guessing on attempts 1-5 skips that attempt's clue opportunity.
-- An invalid word does not consume an attempt.
-- Valid guesses receive positional feedback: correct position, wrong position, or absent.
-- Duplicate letters are handled with a two-pass evaluation so occurrences are counted correctly.
-- Solving on attempts 1-6 produces SOLVED.
-- After an incorrect sixth guess, a special optional seventh guess appears.
-- The seventh guess never counts as a solve, even when it exactly matches the answer.
-- Skipping the seventh guess produces FAILED_HARD.
-- A seventh guess produces FAILED_CLOSE or FAILED_HARD using a temporary configurable closeness rule.
-- The answer is shown after either failure state.
-- See Why becomes available only after the game has ended.
+- data/game1/valid-guesses.json - accepted five-letter guess vocabulary.
+- data/game1/answers.json - smaller set of words allowed to become puzzle answers.
+- data/game1/puzzles.json - dated puzzle records containing the answer, five clues, and publication status.
+- js/services/puzzle-service.js - loads the JSON files once, selects the published puzzle for a date, and validates puzzle records.
+- js/games/game1/game1-logic.js - gameplay rules. It does not contain the puzzle answer or word list.
+- js/games/game1/game1-ui.js - displays the current puzzle supplied by the data/service layer.
 
-## Seventh-attempt closeness rule
+## How to add tomorrow's puzzle
 
-The exact definition of close has not been finalized.
+1. Open data/game1/puzzles.json.
+2. Add a new object inside the puzzles array.
+3. Give it a unique id such as game1-2026-10-08.
+4. Set game to game1.
+5. Set the date in YYYY-MM-DD format.
+6. Enter a five-letter answer that exists in answers.json and valid-guesses.json.
+7. Enter exactly five clue strings.
+8. Set status to published when the puzzle is ready for that date.
+9. Commit and push the JSON change to GitHub.
 
-The prototype currently uses seventhAttemptMinimumCorrectPositions = 2 in js/games/game1/game1-logic.js.
+You do not need to edit game1-ui.js, game1-logic.js, app.js, HTML, or CSS to change a daily puzzle.
 
-That means a seventh guess is FAILED_CLOSE when it has at least 2 correctly positioned letters; otherwise it is FAILED_HARD.
+## Puzzle status
 
-This is TEMPORARY / CONFIGURABLE. The final formula can be changed in evaluateSeventhAttempt() without rewriting the rest of the game.
+Supported values are draft, scheduled, published, and archived. Normal gameplay selects only a Game 1 record whose date matches the requested date and whose status is published.
 
-## Puzzle data separation
+## Word validation
 
-The puzzle is stored as a data record containing date, game, answer, five clues, and status.
+Player input is normalized to uppercase, restricted to A-Z, limited to five letters, and checked against a Set built once from valid-guesses.json. Invalid words do not consume an attempt.
 
-VALID_GUESS_WORDS contains words players may submit. ANSWER_WORDS contains words that may be selected as answers. They are separate so the lists can evolve independently.
+## Current word-list source
 
-The current prototype uses a small local list because there is no backend yet. The future API service can provide the same puzzle shape without putting database code in the game UI.
+The prototype uses the five-letter collection from darkermango/5-Letter-words. The source repository describes it as a collection of more than 5,000 five-letter English words and publishes it under an MIT license. EmniFun keeps a local copy so gameplay works offline and does not call a dictionary API. The imported list is filtered to unique entries containing exactly five ASCII letters.
+
+## Important static-site limitation
+
+This is still a static-site prototype. Any JSON shipped to the browser can be inspected by a user, so draft, scheduled, and future puzzle answers in puzzles.json are not truly private. Status filtering is an application rule, not a security boundary. A future backend should keep unpublished puzzle data server-side.
+
+## Game 1 gameplay architecture
+
+Website UI -> Game 1 UI -> Game 1 Logic -> Puzzle/Data Service -> Local JSON
+
+The same service boundary can later be changed to call a backend API without moving database code into the game UI.
 
 ## Statistics
 
-Game 1 currently tracks Current Streak, Maximum Streak, Total Games, Solved, Failed - Close, Failed - Hard, Average Guesses, and Clues Used.
+Game 1 statistics remain prototype in-memory values. No persistent account or streak database was added in this task.
 
-A solved game increases the current streak and can increase the maximum streak. Either failure result resets the current streak. Prototype statistics are stored only in browser memory, so they are not permanent yet.
+## What remains postponed
 
-## Player history
-
-At completion, Game 1 creates a record containing puzzleDate, game, result, attemptsUsed, cluesUsed, and seventhGuessUsed. The API layer currently treats this as a future backend payload and does not persist it.
-
-## What is intentionally postponed
-
-Production backend, database, permanent statistics storage, secure user authentication, administrator authentication, full admin dashboard, production puzzle archive, scheduling/publishing backend, Google login, OTP/email authentication, leaderboards, multiplayer, payments, advertisements, Game 2 implementation, Game 3 implementation, and the final visual redesign are intentionally not implemented.
-
-## Important files
-
-- index.html - website shell.
-- css/style.css - site and temporary Game 1 styling.
-- js/app.js - connects navigation to independent game modules.
-- js/games/game1/game1-ui.js - board, clues, keyboard, result and See Why UI.
-- js/games/game1/game1-logic.js - Game 1 rules and state transitions.
-- js/games/game1/game1-data.js - puzzle data and separate word lists.
-- js/services/api.js - future backend/API boundary.
-- js/statistics/statistics.js - per-game statistics boundary.
+Production backend, database, persistent statistics, user authentication, administrator authentication, full admin dashboard, production puzzle scheduling, leaderboards, multiplayer, payments, advertisements, Game 2, Game 3, and the final visual redesign are not implemented.
 
 ## Running the site
 
-Because the site uses JavaScript modules, serve it from a local web server instead of opening the HTML with a file:// URL.
+Because JavaScript modules are used, run the site through a local web server:
 
 python -m http.server 8000
 
@@ -79,4 +69,4 @@ Then open http://localhost:8000.
 
 ## Future secrets
 
-Never put administrator passwords, user passwords, database credentials, API keys, or other secrets in frontend source files or the repository. Production authentication and secrets belong on the backend or platform secret store.
+Never put passwords, API keys, database credentials, or other secrets into frontend source files or the repository.
