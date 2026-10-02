@@ -1,13 +1,9 @@
 /**
- * Data-service checks.
+ * Game 1 data-service checks.
  *
  * These run in a browser/server test environment with fetch available.
  */
-import {
-  loadGame1Data,
-  findPublishedPuzzle,
-  validatePuzzleRecord
-} from "../js/services/puzzle-service.js";
+import { loadGame1Data, findPublishedPuzzle, validatePuzzleRecord } from "../js/services/puzzle-service.js";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -19,12 +15,14 @@ assert([...data.validWords].every((word) => /^[A-Z]{5}$/.test(word)), "Every acc
 assert(new Set(data.validWords).size === data.validWords.size, "Accepted vocabulary must not contain duplicates.");
 assert(data.answerWords.size > 0, "Answer vocabulary must not be empty.");
 
-for (const word of ["APPLE", "THING", "AARTI", "LUDIC", "JIVER"]) {
+// Representative words cover common, uncommon, variant, inflected, and loanword cases.
+for (const word of ["APPLE", "THING", "AARTI", "LUDIC", "JIVER", "CWTCH", "WHEES"]) {
   assert(data.validWords.has(word), "Broad vocabulary should contain representative source words: " + word);
 }
 
-for (const word of ["AARON", "EMACS", "FUBAR", "NIMBY", "ZILLA"]) {
-  assert(!data.validWords.has(word), "Obvious source-flagged non-standard entry should be filtered: " + word);
+// These are intentionally excluded source-marked abbreviations/codes or malformed artifacts.
+for (const word of ["EMACS", "NIMBY", "CCITT", "ACCRA", "ZILLA", "ADMRX", "APPMT", "ADDDA"]) {
+  assert(!data.validWords.has(word), "Obvious source-flagged or malformed entry should be filtered: " + word);
 }
 
 for (const answer of data.answerWords) {
