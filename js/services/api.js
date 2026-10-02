@@ -1,20 +1,18 @@
 /**
- * Data service boundary for EmniFun.
+ * Data service boundary.
  *
- * Game code should ask this service for puzzle/user data instead of talking
- * directly to a database. In Phase 1 there is no backend, so these functions
- * are placeholders for the future API.
+ * Today this returns local prototype data. Later it can call a real API
+ * without making the game UI or rules understand the database.
  */
+import { game1Puzzle } from "../games/game1/game1-data.js";
 
 export async function getPuzzle(gameId, puzzleDate) {
-  // Future: request a published puzzle from the backend/API.
-  void gameId;
-  void puzzleDate;
+  if (gameId === "game1" && puzzleDate === game1Puzzle.date) return game1Puzzle;
   return null;
 }
 
 export async function saveGameResult(gameId, result) {
-  // Future: send a completed game result to the backend.
+  // Future: send the result to the backend.
   void gameId;
   void result;
   return null;
