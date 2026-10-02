@@ -8,12 +8,13 @@ Game 1 is playable and its content is now data-driven. Game 2 and Game 3 remain 
 
 ## Where Game 1 data lives
 
-- data/game1/valid-guesses.json - accepted five-letter guess vocabulary.
+- data/game1/valid-guesses.json - comprehensive accepted five-letter guess vocabulary.
 - data/game1/answers.json - smaller set of words allowed to become puzzle answers.
 - data/game1/puzzles.json - dated puzzle records containing the answer, five clues, and publication status.
 - js/services/puzzle-service.js - loads the JSON files once, selects the published puzzle for a date, and validates puzzle records.
 - js/games/game1/game1-logic.js - gameplay rules. It does not contain the puzzle answer or word list.
 - js/games/game1/game1-ui.js - displays the current puzzle supplied by the data/service layer.
+- scripts/generate-game1-vocabulary.mjs - rebuilds the generated five-letter vocabulary from the selected lexical sources.
 
 ## How to add tomorrow's puzzle
 
@@ -37,9 +38,21 @@ Supported values are draft, scheduled, published, and archived. Normal gameplay 
 
 Player input is normalized to uppercase, restricted to A-Z, limited to five letters, and checked against a Set built once from valid-guesses.json. Invalid words do not consume an attempt.
 
-## Current word-list source
+## Comprehensive word vocabulary
 
-The prototype uses the five-letter collection from darkermango/5-Letter-words. The source repository describes it as a collection of more than 5,000 five-letter English words and publishes it under an MIT license. EmniFun keeps a local copy so gameplay works offline and does not call a dictionary API. The imported list is filtered to unique entries containing exactly five ASCII letters.
+Game 1 no longer uses a small Wordle-sized vocabulary. The generated accepted vocabulary currently contains 16,371 unique five-letter entries from two independent lexical sources: Moby Words II and the Wordnik Wordlist.
+
+There is no artificial numerical maximum. The final size is determined by the selected sources and the documented filtering rules. The project does not intentionally stop at 10,000, 15,000, 20,000, or any other fixed number.
+
+The generator is scripts/generate-game1-vocabulary.mjs. It normalizes source entries, keeps exactly five ASCII letters, deduplicates them, and applies source-aware filtering for names, places, abbreviations, and acronyms. Legitimate uncommon, archaic, variant, and inflected words are retained when supported by the selected lexical sources.
+
+The final data file is bundled locally, so the game itself works without a dictionary API or network lookup. The accepted guess vocabulary remains separate from answers.json, which is a much smaller curated answer pool.
+
+To refresh the vocabulary, run:
+
+    node scripts/generate-game1-vocabulary.mjs
+
+Then review the generated diff and commit data/game1/valid-guesses.json.
 
 ## Important static-site limitation
 
@@ -63,7 +76,7 @@ Production backend, database, persistent statistics, user authentication, admini
 
 Because JavaScript modules are used, run the site through a local web server:
 
-python -m http.server 8000
+    python -m http.server 8000
 
 Then open http://localhost:8000.
 
