@@ -1,1 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="EmniFun - a simple, Indian-oriented puzzle platform.">
+  <title>EmniFun</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="navbar" aria-label="Main navigation">
+      <a class="brand" href="#" data-view="home">EmniFun</a>
+      <div class="nav-links">
+        <button class="nav-link active" data-view="home">Home</button>
+        <button class="nav-link" data-view="games">Games</button>
+        <button class="nav-link" data-view="statistics">Statistics</button>
+        <button class="nav-link" data-view="archive">Archive</button>
+        <button class="nav-link" data-view="login">Login</button>
+      </div>
+    </nav>
+  </header>
 
+  <main>
+    <section id="home" class="view active" aria-labelledby="home-title">
+      <div class="hero">
+        <h1 id="home-title">Welcome to EmniFun</h1>
+        <p>A simple home for word and puzzle games. This Phase 1 version establishes the foundation for the games and services that will be added later.</p>
+        <button class="button" data-go-games>Explore Games</button>
+      </div>
+    </section>
+
+    <section id="games" class="view" aria-labelledby="games-title">
+      <div class="section-heading">
+        <h2 id="games-title">Games</h2>
+        <p>Three independent game slots, ready to grow separately.</p>
+      </div>
+      <div id="game-area"></div>
+    </section>
+
+    <section id="statistics" class="view" aria-labelledby="statistics-title">
+      <div class="section-heading">
+        <h2 id="statistics-title">Statistics</h2>
+        <p>Per-game statistics will be connected to real player data in a future phase.</p>
+      </div>
+      <div id="statistics-content"></div>
+    </section>
+
+    <section id="archive" class="view" aria-labelledby="archive-title">
+      <div class="placeholder">
+        <h2 id="archive-title">Puzzle Archive</h2>
+        <p>The private puzzle archive will eventually manage drafts, schedules, published puzzles, previous answers, and game associations.</p>
+        <p>This Phase 1 placeholder does not expose future puzzle answers.</p>
+      </div>
+    </section>
+
+    <section id="login" class="view" aria-labelledby="login-title">
+      <div class="placeholder">
+        <h2 id="login-title">Login</h2>
+        <p id="login-status">Login and registration will be connected to the backend in a future phase.</p>
+        <p>Future registration will use a username and password. Passwords will be securely handled by the backend rather than stored in this website.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <strong>EmniFun</strong> · Phase 1 foundation
+    </div>
+  </footer>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
