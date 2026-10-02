@@ -6,7 +6,7 @@ This folder contains the local data used by the Game 1 prototype.
 
 This is the comprehensive accepted player-guess vocabulary.
 
-Current generated size: 16,834 unique five-letter A-Z entries. There is no artificial maximum and no fixed target size.
+Current generated size: 16,273 unique five-letter A-Z entries. There is no artificial maximum and no fixed target size.
 
 The generator combines selected high-quality lexical sources and filters obvious source-marked non-standard entries. It does not manually type the vocabulary.
 
@@ -26,13 +26,13 @@ Wordnik Wordlist
 - wordlist-20210729.txt - independent supplementary English wordlist.
 - Repository: https://github.com/wordnik/wordlist
 
-### Filtering rules
+### Filtering
 
 1. Normalize entries to lowercase.
 2. Keep exactly five ASCII letters A-Z.
 3. Deduplicate the combined candidate set.
-4. Remove source-flagged proper names, places, acronyms, and abbreviations when they lack support in the Moby single-word base.
-5. Remove only unmistakable malformed or short-form-like Moby artifacts when they also lack independent lexical corroboration.
+4. Exclude source-flagged proper names, places, acronyms, and abbreviations unless established Moby crossword vocabulary independently supports the lexicalized English word.
+5. Remove only unmistakable malformed or short-form-like Moby entries when they also lack independent lexical corroboration.
 6. Preserve legitimate uncommon, archaic, variant, and inflected English words when the selected sources support them.
 7. Never cap the vocabulary by a target number.
 
