@@ -16408,5 +16408,11 @@
     "zymes",
     "zymic",
     "zymin"
-  ]
+  ],
+  "sourceCandidateCounts": {
+    "mobySingle": 14847,
+    "wordnik": 11846,
+    "combinedBeforeFiltering": 16907,
+    "excludedAfterFiltering": 536
+  }
 }
