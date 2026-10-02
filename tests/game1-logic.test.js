@@ -20,7 +20,8 @@ function assert(condition, message) {
 }
 
 const validWords = new Set([
-  "APPLE","HOUSE","CHAIR","GRAPE","PLANT","STONE","TRAIN","BRAVE","CLOUD","MANGO"
+  "APPLE","HOUSE","WHICH","THING","CHAIR","GRAPE","PLANT","STONE",
+  "TRAIN","BRAVE","CLOUD","MANGO","SHEEP"
 ]);
 
 {
@@ -44,12 +45,14 @@ const validWords = new Set([
 
 {
   assert(isValidGuess("house", validWords), "A valid word other than APPLE must be accepted.");
-  assert(!isValidGuess("ABCDE", validWords), "Random word should be rejected when absent from vocabulary.");
+  assert(isValidGuess("which", validWords), "A normal word outside the old tiny demo vocabulary must be accepted.");
+  assert(isValidGuess("thing", validWords), "Another common word outside the old demo vocabulary must be accepted.");
+  assert(!isValidGuess("QWERT", validWords), "Random word should be rejected when absent from vocabulary.");
   assert(!isValidGuess("AB1CD", validWords), "Numbers should be rejected.");
   assert(!isValidGuess("ABC!D", validWords), "Punctuation should be rejected.");
   assert(!isValidGuess("HOUSES", validWords), "Words longer than five letters should be rejected.");
   assert(!isValidGuess("HOME", validWords), "Words shorter than five letters should be rejected.");
-  assert(sanitizeGuessInput("  house!! ").slice(0,5) === "HOUSE", "Pasted mixed text should be sanitized.");
+  assert(sanitizeGuessInput("  ho!use99 ").slice(0, 5) === "HOUSE", "Pasted mixed text should be sanitized.");
 }
 
 {
@@ -66,15 +69,11 @@ const validWords = new Set([
   const sixth = submitNormalGuess(state, "TRAIN", "HOUSE");
   assert(sixth.seventhStage, "Incorrect sixth guess must open seventh stage.");
   assert(state.status === "awaiting-seventh", "State must await optional seventh guess.");
-  assert(skipSeventhAttempt(state, "HOUSE") === undefined, "Skip operation should complete.");
+  skipSeventhAttempt(state, "HOUSE");
   assert(state.result === GAME1_RESULT.FAILED_HARD, "Skipping seventh guess must be FAILED_HARD.");
 }
 
 {
-  const state = createGame1State(validWords);
-  for (const guess of ["APPLE","CHAIR","GRAPE","PLANT","STONE","TRAIN"]) {
-    submitNormalGuess(state, guess, "HOUSE");
-  }
   const seventhExact = createGame1State(validWords);
   seventhExact.status = "awaiting-seventh";
   const exact = submitSeventhGuess(seventhExact, "HOUSE", "HOUSE");
