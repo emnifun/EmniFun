@@ -15,8 +15,19 @@ function assert(condition, message) {
 
 const data = await loadGame1Data();
 
-assert(data.validWords.size >= 5000, "Guess vocabulary should contain at least 5,000 words.");
+assert(data.validWords.size > 15000, "Generated guess vocabulary should be substantially larger than the original prototype.");
+assert([...data.validWords].every((word) => /^[A-Z]{5}$/.test(word)), "Every accepted vocabulary entry must be exactly five A-Z letters.");
+assert(new Set(data.validWords).size === data.validWords.size, "Accepted vocabulary must not contain duplicates.");
 assert(data.answerWords.size > 0, "Answer vocabulary must not be empty.");
+
+for (const word of ["APPLE", "THING", "AARTI", "LUDIC", "JIVER"]) {
+  assert(data.validWords.has(word), "Broad vocabulary should contain representative source words: " + word);
+}
+
+for (const word of ["AARON", "EMACS", "FUBAR", "NIMBY", "ZILLA"]) {
+  assert(!data.validWords.has(word), "Obvious source-flagged non-standard entry should be filtered: " + word);
+}
+
 for (const answer of data.answerWords) {
   assert(data.validWords.has(answer), "Every answer must also be a valid guess: " + answer);
 }
