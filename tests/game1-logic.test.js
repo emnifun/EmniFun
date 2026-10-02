@@ -1,7 +1,5 @@
 /**
- * Lightweight Game 1 logic checks.
- *
- * These are plain assertions so the rules can be reviewed without a test framework.
+ * Game 1 gameplay checks using an injected vocabulary.
  */
 import {
   GAME1_CONFIG,
@@ -10,6 +8,7 @@ import {
   evaluateGuess,
   evaluateSeventhAttempt,
   isValidGuess,
+  sanitizeGuessInput,
   submitNormalGuess,
   submitSeventhGuess,
   skipSeventhAttempt,
@@ -20,69 +19,72 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-// 1, 2, 3, 4, 5, 6: normal solve positions and clue rule.
+const validWords = new Set([
+  "APPLE","HOUSE","CHAIR","GRAPE","PLANT","STONE","TRAIN","BRAVE","CLOUD","MANGO"
+]);
+
 {
-  const state = createGame1State();
-  assert(state.attemptNumber === 1, "Game must start on attempt 1.");
+  const state = createGame1State(validWords);
+  assert(state.attemptNumber === 1, "Game starts on attempt 1.");
+  assert(useClue(state, 1).ok, "Clue 1 must be usable.");
+  assert(state.attemptNumber === 2, "Clue 1 consumes attempt 1.");
 
-  assert(useClue(state, 1).ok, "Clue 1 should be usable on attempt 1.");
-  assert(state.attemptNumber === 2, "Using clue 1 must consume attempt 1.");
+  const before = state.guesses.length;
+  const invalid = submitNormalGuess(state, "ABCDE", "HOUSE");
+  assert(!invalid.ok && state.guesses.length === before, "Invalid word must not consume an attempt.");
 
-  const invalidBefore = state.guesses.length;
-  const invalid = submitNormalGuess(state, "ABCDE", "APPLE");
-  assert(!invalid.ok && state.guesses.length === invalidBefore, "Invalid word must not consume an attempt.");
-
-  assert(useClue(state, 2).ok, "Clue 2 should be usable on attempt 2.");
-  assert(useClue(state, 3).ok, "Clue 3 should be usable on attempt 3.");
-  assert(useClue(state, 4).ok, "Clue 4 should be usable on attempt 4.");
-  assert(useClue(state, 5).ok, "Clue 5 should be usable on attempt 5.");
-  assert(state.attemptNumber === 6, "After five clues, the player must still reach attempt 6.");
-  assert(useClue(state, 6).ok === false, "Attempt 6 must not have a clue.");
-
-  const solved = submitNormalGuess(state, "APPLE", "APPLE");
-  assert(solved.solved && state.result === GAME1_RESULT.SOLVED, "Correct attempt 6 guess must solve.");
+  assert(useClue(state, 2).ok, "Clue 2 must be usable.");
+  assert(useClue(state, 3).ok, "Clue 3 must be usable.");
+  assert(useClue(state, 4).ok, "Clue 4 must be usable.");
+  assert(useClue(state, 5).ok, "Clue 5 must be usable.");
+  assert(state.attemptNumber === 6, "Five clues must still leave attempt 6.");
+  assert(!useClue(state, 6).ok, "Attempt 6 must be guess-only.");
+  assert(submitNormalGuess(state, "HOUSE", "HOUSE").solved, "Correct attempt 6 guess must solve.");
 }
 
-// Duplicate-letter evaluation.
+{
+  assert(isValidGuess("house", validWords), "A valid word other than APPLE must be accepted.");
+  assert(!isValidGuess("ABCDE", validWords), "Random word should be rejected when absent from vocabulary.");
+  assert(!isValidGuess("AB1CD", validWords), "Numbers should be rejected.");
+  assert(!isValidGuess("ABC!D", validWords), "Punctuation should be rejected.");
+  assert(!isValidGuess("HOUSES", validWords), "Words longer than five letters should be rejected.");
+  assert(!isValidGuess("HOME", validWords), "Words shorter than five letters should be rejected.");
+  assert(sanitizeGuessInput("  house!! ").slice(0,5) === "HOUSE", "Pasted mixed text should be sanitized.");
+}
+
 {
   const feedback = evaluateGuess("SHEEP", "APPLE");
   assert(feedback.length === 5, "Feedback must contain five positions.");
-  assert(feedback[0] === "wrong-position", "P should not be falsely treated as present at S.");
-  assert(isValidGuess("APPLE"), "APPLE should be a valid local guess.");
-  assert(!isValidGuess("QWERT"), "Unknown word must not be a valid guess.");
-  assert(!isValidGuess("ABCD1"), "Non-English character input must be rejected.");
+  assert(feedback[3] === "absent", "Duplicate-letter evaluation must account for answer letter counts.");
 }
 
-// Attempt 7 appears only after an incorrect sixth guess.
 {
-  const state = createGame1State();
-  for (const guess of ["HOUSE", "CHAIR", "GRAPE", "PLANT", "STONE"]) {
-    submitNormalGuess(state, guess, "APPLE");
+  const state = createGame1State(validWords);
+  for (const guess of ["APPLE","CHAIR","GRAPE","PLANT","STONE"]) {
+    submitNormalGuess(state, guess, "HOUSE");
   }
-  assert(state.attemptNumber === 6, "Fifth wrong guess must leave attempt 6.");
-  const sixth = submitNormalGuess(state, "BRAVE", "APPLE");
-  assert(sixth.seventhStage, "Incorrect sixth guess must open the seventh stage.");
+  const sixth = submitNormalGuess(state, "TRAIN", "HOUSE");
+  assert(sixth.seventhStage, "Incorrect sixth guess must open seventh stage.");
   assert(state.status === "awaiting-seventh", "State must await optional seventh guess.");
-
-  skipSeventhAttempt(state, "APPLE");
+  assert(skipSeventhAttempt(state, "HOUSE") === undefined, "Skip operation should complete.");
   assert(state.result === GAME1_RESULT.FAILED_HARD, "Skipping seventh guess must be FAILED_HARD.");
 }
 
-// Exact seventh answer is still a failure.
 {
-  const state = createGame1State();
-  state.status = "awaiting-seventh";
-  const result = submitSeventhGuess(state, "APPLE", "APPLE");
-  assert(result.ok && result.result !== GAME1_RESULT.SOLVED, "Seventh exact answer must not solve.");
+  const state = createGame1State(validWords);
+  for (const guess of ["APPLE","CHAIR","GRAPE","PLANT","STONE","TRAIN"]) {
+    submitNormalGuess(state, guess, "HOUSE");
+  }
+  const seventhExact = createGame1State(validWords);
+  seventhExact.status = "awaiting-seventh";
+  const exact = submitSeventhGuess(seventhExact, "HOUSE", "HOUSE");
+  assert(exact.ok && exact.result !== GAME1_RESULT.SOLVED, "Seventh exact answer must still be failure.");
+
+  const close = evaluateSeventhAttempt("HOUSE", "HOUSE");
+  const hard = evaluateSeventhAttempt("MANGO", "HOUSE");
+  assert(close.result === GAME1_RESULT.FAILED_CLOSE, "Close seventh guess should be close under temporary rule.");
+  assert(hard.result === GAME1_RESULT.FAILED_HARD, "Distant seventh guess should be hard.");
 }
 
-// Both close and hard outcomes must be available from the configurable rule.
-{
-  const close = evaluateSeventhAttempt("APPLE", "APPLE");
-  const hard = evaluateSeventhAttempt("MANGO", "APPLE");
-  assert(close.result === GAME1_RESULT.FAILED_CLOSE, "A sufficiently close seventh guess should be close.");
-  assert(hard.result === GAME1_RESULT.FAILED_HARD, "A distant seventh guess should be hard.");
-  assert(GAME1_CONFIG.seventhAttemptMinimumCorrectPositions >= 0, "Closeness threshold must be configurable.");
-}
-
+assert(GAME1_CONFIG.normalAttempts === 6, "Six normal attempts must remain configured.");
 console.log("Game 1 logic checks passed.");
