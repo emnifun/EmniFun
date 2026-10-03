@@ -10,8 +10,20 @@
 <body>
   <header class="site-header">
     <nav class="navbar" aria-label="Main navigation">
-      <a class="brand" href="#" data-view="home">EmniFun</a>
-      <div class="nav-links">
+      <div class="navbar-brand-group">
+        <button
+          class="mobile-menu-toggle"
+          id="mobile-menu-toggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded="false"
+          aria-controls="primary-navigation"
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+        <a class="brand" href="#" data-view="home">EmniFun</a>
+      </div>
+      <div class="nav-links" id="primary-navigation">
         <button class="nav-link active" data-view="home">Home</button>
         <button class="nav-link" data-view="games">Games</button>
         <button class="nav-link" data-view="statistics">Statistics</button>
