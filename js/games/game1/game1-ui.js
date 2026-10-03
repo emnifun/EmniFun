@@ -114,7 +114,6 @@ export async function renderGame1(container) {
   const nativeKeyboardCancel = container.querySelector("#game1-native-keyboard-cancel");
   const nativeKeyboardConfirmButton = container.querySelector("#game1-native-keyboard-confirm-button");
   const mobileQuery = window.matchMedia("(max-width: 520px)");
-  const nativeKeyboardPreferenceKey = "fivewink.nativeKeyboardPreference";
   let nativeKeyboardMode = false;
   let nativeKeyboardPromptOpen = false;
   let lastBoardTapAt = 0;
@@ -161,22 +160,6 @@ export async function renderGame1(container) {
   function focusGame() {
     if (nativeKeyboardMode) return;
     root.focus({ preventScroll: true });
-  }
-
-  function hasNativeKeyboardPreference() {
-    try {
-      return localStorage.getItem(nativeKeyboardPreferenceKey) === "enabled";
-    } catch {
-      return false;
-    }
-  }
-
-  function rememberNativeKeyboardPreference() {
-    try {
-      localStorage.setItem(nativeKeyboardPreferenceKey, "enabled");
-    } catch {
-      // Preference persistence is optional; native keyboard mode still works.
-    }
   }
 
   function isMobileGameViewport() {
@@ -301,11 +284,10 @@ export async function renderGame1(container) {
       (state.status !== "playing" && state.status !== "awaiting-seventh")
     ) return;
 
-    if (hasNativeKeyboardPreference()) {
-      setNativeKeyboardMode(true);
-      return;
-    }
-
+    // Every double-tap uses the same explicit confirmation-button path that
+    // successfully opened the native keyboard on the first activation.
+    // There is intentionally no remembered keyboard-open state or cached
+    // activation path here.
     nativeKeyboardPromptOpen = true;
     nativeKeyboardConfirm.classList.remove("hidden");
     nativeKeyboardCancel.focus({ preventScroll: true });
@@ -318,7 +300,6 @@ export async function renderGame1(container) {
 
   function activateNativeKeyboard() {
     closeNativeKeyboardConfirmation();
-    rememberNativeKeyboardPreference();
     setNativeKeyboardMode(true);
   }
 
@@ -599,14 +580,10 @@ export async function renderGame1(container) {
     if (now - lastBoardTapAt <= 320) {
       lastBoardTapAt = 0;
 
-      // Once the user has accepted the feature, activate directly from the
-      // second touch gesture. This keeps focus() inside a trusted user
-      // activation even after the native keyboard was previously dismissed.
-      if (hasNativeKeyboardPreference()) {
-        setNativeKeyboardMode(true);
-      } else {
-        showNativeKeyboardConfirmation();
-      }
+      // Always use the same user-confirmation flow as the original
+      // successful activation. The confirmation button provides the trusted
+      // user gesture from which the native input is focused.
+      showNativeKeyboardConfirmation();
     } else {
       lastBoardTapAt = now;
     }
