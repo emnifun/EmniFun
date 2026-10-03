@@ -30,7 +30,7 @@ assert(
 
 assert(
   JSON.stringify(evaluateGuess("EERIE", "THREE")) ===
-    JSON.stringify(["wrong-position", "wrong-position", "correct", "absent", "correct"]),
+    JSON.stringify(["wrong-position", "absent", "correct", "absent", "correct"]),
   "Duplicate-letter feedback must not over-credit a repeated letter."
 );
 
