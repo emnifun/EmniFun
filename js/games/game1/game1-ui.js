@@ -315,7 +315,7 @@ export async function renderGame1(container) {
           <div class="seventh-stage">
             <div class="close-banner">${
               state.result === GAME1_RESULT.FAILED_CLOSE &&
-              state.guesses[GAME1_CONFIG.normalAttempts] === state.answer
+              state.guesses[GAME1_CONFIG.normalAttempts]
                 ? "Your 7th guess was right — but it does not count as a solve."
                 : "You failed — but are you close?"
             }</div>
@@ -527,7 +527,7 @@ export async function renderGame1(container) {
       <div class="explanation-card" id="explanation-card">
         <h3>See Why</h3>
         <p>${context}</p>
-        <p><strong>Answer:</strong> ${puzzle.answer}</p>
+        <p><strong>Answer:</strong> ${state.answer}</p>
         ${puzzle.clues.map((clue, index) =>
           `<p><strong>Clue #${index + 1}:</strong> ${clue}</p>`
         ).join("")}
