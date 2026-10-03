@@ -1,0 +1,66 @@
+{
+  "game": "game1",
+  "year": 2026,
+  "puzzles": {
+    "2026-10-02": {
+      "id": "game1-2026-10-02",
+      "clues": [
+        "It is a fruit.",
+        "It can be red, green, or yellow.",
+        "It is commonly used in pies.",
+        "Its name begins with A.",
+        "It has five letters."
+      ]
+    },
+    "2026-10-03": {
+      "id": "game1-2026-10-03",
+      "clues": [
+        "People live in it.",
+        "It has rooms.",
+        "It usually has a door.",
+        "It can have a roof.",
+        "It is a place to live."
+      ]
+    },
+    "2026-10-04": {
+      "id": "game1-2026-10-04",
+      "clues": [
+        "It travels on tracks.",
+        "It carries passengers or goods.",
+        "It often has many carriages.",
+        "It stops at stations.",
+        "It has five letters."
+      ]
+    },
+    "2026-10-05": {
+      "id": "game1-2026-10-05",
+      "clues": [
+        "It describes courage.",
+        "It can describe a person.",
+        "It is the opposite of timid.",
+        "It begins with B.",
+        "It has five letters."
+      ]
+    },
+    "2026-10-06": {
+      "id": "game1-2026-10-06",
+      "clues": [
+        "It appears in the sky.",
+        "It can bring rain.",
+        "It can be white or dark.",
+        "It floats above the ground.",
+        "It has five letters."
+      ]
+    },
+    "2026-10-07": {
+      "id": "game1-2026-10-07",
+      "clues": [
+        "It is a fruit.",
+        "It grows in bunches.",
+        "It can be green or purple.",
+        "It can be used to make juice.",
+        "It has five letters."
+      ]
+    }
+  }
+}
