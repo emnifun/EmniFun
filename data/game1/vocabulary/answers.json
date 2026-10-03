@@ -1,0 +1,5 @@
+{
+  "description": "Private FiveWink answer candidates have been migrated to Cloudflare D1.",
+  "storage": "cloudflare-d1",
+  "words": []
+}
