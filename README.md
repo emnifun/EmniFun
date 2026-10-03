@@ -2,11 +2,11 @@
 
 EmniFun is a beginner-friendly Indian-oriented puzzle platform built with simple HTML, CSS, and JavaScript modules.
 
-## Current phase: Game 1 data-driven prototype
+## Current phase: FiveWink data-driven prototype
 
-Game 1 is playable and its content is data-driven. Game 2 and Game 3 remain independent Coming Soon placeholders.
+FiveWink is playable and its content is data-driven. Game 2 and Game 3 remain independent Coming Soon placeholders.
 
-## Game 1 data architecture
+## FiveWink data architecture
 
 The project deliberately separates three different concepts:
 
@@ -28,16 +28,16 @@ data/game1/
 - `data/game1/puzzles/YYYY/YYYY-MM-DD.json` — one actual daily puzzle that you create.
 - `data/game1/puzzles/index.json` — small archive manifest used to locate date files.
 - `data/game1/puzzles/README.md` — beginner-friendly puzzle creation instructions.
-- `js/services/puzzle-service.js` — the data/service boundary used by Game 1.
+- `js/services/puzzle-service.js` — the data/service boundary used by FiveWink.
 - `js/games/game1/game1-logic.js` — gameplay rules; it does not know where puzzle data is stored.
-- `js/games/game1/game1-ui.js` — current Game 1 presentation.
+- `js/games/game1/game1-ui.js` — current FiveWink presentation.
 - `scripts/generate-game1-vocabulary.mjs` — deterministic vocabulary-generation pipeline.
 
-Game 1 UI does not read puzzle JSON directly.
+FiveWink UI does not read puzzle JSON directly.
 
 ## Comprehensive five-letter vocabulary
 
-Game 1 does not use a small Wordle-sized vocabulary. The checked-in accepted-guess dataset currently contains 16,273 unique five-letter A-Z entries after deterministic source and quality filtering.
+FiveWink does not use a small Wordle-sized vocabulary. The checked-in accepted-guess dataset currently contains 16,273 unique five-letter A-Z entries after deterministic source and quality filtering.
 
 There is deliberately no artificial maximum and no target such as 10,000, 15,000, 20,000, 40,000, or 50,000 words. If the selected high-quality sources contain more legitimate five-letter English words after filtering, the generator can include them. The final size is determined by source coverage and lexical quality rules.
 
@@ -54,7 +54,7 @@ For example:
 contains:
 
 - the date;
-- the Game 1 id;
+- the FiveWink id;
 - the answer;
 - exactly five clues;
 - the publication status.
@@ -63,7 +63,7 @@ Start new puzzles as `draft`. Change to `published` only when ready.
 
 Supported statuses are `draft`, `published`, `unpublished`, and `archived`.
 
-The public game asks the puzzle service for today's date and only accepts a `published` Game 1 puzzle for that exact date. It never cycles through the 182 answer candidates and never falls back to another date.
+The public game asks the puzzle service for today's date and only accepts a `published` FiveWink puzzle for that exact date. It never cycles through the 182 answer candidates and never falls back to another date.
 
 ## How to add tomorrow's puzzle
 
@@ -78,13 +78,13 @@ The public game asks the puzzle service for today's date and only accepts a `pub
 9. Preview/test it.
 10. Change the status to `"published"` when it is ready.
 
-You do not need to edit the Game 1 UI or game rules to create a new puzzle.
+You do not need to edit the FiveWink UI or game rules to create a new puzzle.
 
 To take a published puzzle offline, change its status to `unpublished`. To retain it as historical data, change it to `archived`.
 
 ## Publication safety
 
-For one Game 1 date, there should be zero or one published puzzle. The puzzle service checks the matching date files and throws a clear data error when multiple published records are present instead of silently choosing one.
+For one FiveWink date, there should be zero or one published puzzle. The puzzle service checks the matching date files and throws a clear data error when multiple published records are present instead of silently choosing one.
 
 If no puzzle exists for today's date, or the date exists only as draft/unpublished/archived, the game shows an unavailable state. It does not use yesterday's puzzle, tomorrow's puzzle, APPLE, or an invented puzzle.
 
@@ -102,15 +102,15 @@ The service boundary is intentionally stable:
 
 ```
 Today:
-Game 1 → Puzzle Service → Local JSON
+FiveWink → Puzzle Service → Local JSON
 
 Later:
-Game 1 → Puzzle Service → Backend API → Database
+FiveWink → Puzzle Service → Backend API → Database
                               ↑
                        Admin Dashboard
 ```
 
-Game 1 continues asking the service for its current puzzle. The UI and core game logic do not need to know whether the answer came from JSON, an API, or a database.
+FiveWink continues asking the service for its current puzzle. The UI and core game logic do not need to know whether the answer came from JSON, an API, or a database.
 
 The puzzle JSON record is already the conceptual entity that a future admin dashboard can create, edit, publish, unpublish, archive, search, and filter. No production admin system is implemented in this phase.
 

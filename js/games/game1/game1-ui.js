@@ -21,8 +21,9 @@ import { saveGameResult } from "../../services/api.js";
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 export async function renderGame1(container) {
+  document.title = "FiveWink — EmniFun";
   container.innerHTML =
-    '<div class="placeholder"><h2>Loading Game 1…</h2><p>Loading the current published puzzle.</p></div>';
+    '<div class="placeholder"><h2>Loading FiveWink…</h2><p>Loading the current published puzzle.</p></div>';
 
   let puzzle;
   let validWords;
@@ -34,7 +35,7 @@ export async function renderGame1(container) {
     ]);
   } catch (error) {
     container.innerHTML =
-      '<div class="placeholder"><h2>Game 1 could not load</h2><p>' +
+      '<div class="placeholder"><h2>FiveWink could not load</h2><p>' +
       (error?.message || "Puzzle data could not be loaded.") +
       '</p></div>';
     return;
@@ -42,7 +43,7 @@ export async function renderGame1(container) {
 
   if (!puzzle) {
     container.innerHTML =
-      '<div class="placeholder"><h2>No puzzle available</h2><p>There is no published Game 1 puzzle for today.</p></div>';
+      '<div class="placeholder"><h2>No puzzle available</h2><p>There is no published FiveWink puzzle for today.</p></div>';
     return;
   }
 
@@ -54,8 +55,8 @@ export async function renderGame1(container) {
       <div class="game-header">
         <div>
           <p class="eyebrow">Daily Puzzle · ${puzzle.date}</p>
-          <h2>Game 1</h2>
-          <p>Find the hidden five-letter word.</p>
+          <h2>FiveWink</h2>
+          <p>Wink your way to the word.</p>
         </div>
         <button class="button secondary" type="button" id="game1-back">Back to Games</button>
       </div>

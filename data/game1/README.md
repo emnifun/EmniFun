@@ -1,8 +1,8 @@
-# Game 1 data
+# FiveWink data
 
-Game 1 keeps three separate kinds of data:
+FiveWink keeps three separate kinds of data:
 
-1. **Guess vocabulary** — every five-letter word that Game 1 accepts as a guess.
+1. **Guess vocabulary** — every five-letter word that FiveWink accepts as a guess.
 2. **Answer candidates** — the smaller curated set of words that are suitable to become answers.
 3. **Puzzle archive** — the actual date-based puzzles that you create.
 
@@ -40,7 +40,7 @@ Every answer candidate should also exist in `valid-guesses.json`.
 
 ## Puzzle data
 
-Game 1 daily puzzle storage is date-wise:
+FiveWink daily puzzle storage is date-wise:
 
 ONE DATE = ONE WORD FILE + ONE CLUE FILE
 
@@ -98,9 +98,9 @@ The index does not duplicate answer or clue text.
 
 ### Puzzle service
 
-The Game 1 UI and logic do not read word or clue files directly.
+The FiveWink UI and logic do not read word or clue files directly.
 The puzzle service uses the date/index entry, loads that date's two files, validates them,
-and combines them into the same puzzle object Game 1 already expects:
+and combines them into the same puzzle object FiveWink already expects:
 
     id + game + date + answer + clues + status
 
@@ -149,17 +149,17 @@ The puzzle record in these JSON files is already the conceptual data entity that
 Today:
 
 ```
-Game 1 → Puzzle Service → Local JSON
+FiveWink → Puzzle Service → Local JSON
 ```
 
 Later:
 
 ```
-Game 1 → Puzzle Service → Backend API → Database
+FiveWink → Puzzle Service → Backend API → Database
                               ↑
                        Admin Dashboard
 ```
 
-The Game 1 UI and rules can continue using the same service functions and puzzle fields. The storage implementation can change without redesigning the puzzle record or rewriting the game.
+The FiveWink UI and rules can continue using the same service functions and puzzle fields. The storage implementation can change without redesigning the puzzle record or rewriting the game.
 
-Game 2 and Game 3 keep their own data structures. Nothing here requires future games to use Game 1's five-letter puzzle schema.
+Game 2 and Game 3 keep their own data structures. Nothing here requires future games to use FiveWink's five-letter puzzle schema.

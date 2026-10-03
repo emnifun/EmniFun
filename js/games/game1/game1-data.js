@@ -1,5 +1,5 @@
 /**
- * Static Game 1 configuration.
+ * Static FiveWink configuration.
  *
  * Actual puzzles and word lists live under data/game1/.
  * Access puzzle data through js/services/puzzle-service.js.

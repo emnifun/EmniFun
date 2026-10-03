@@ -10,6 +10,7 @@ const viewLinks = [...document.querySelectorAll("[data-view]")];
 const gameArea = document.querySelector("#game-area");
 
 function showView(viewId) {
+  document.title = "EmniFun";
   views.forEach((view) => view.classList.toggle("active", view.id === viewId));
   navLinks.forEach((link) => link.classList.toggle("active", link.dataset.view === viewId));
   if (viewId === "statistics") renderStatistics();
@@ -18,7 +19,7 @@ function showView(viewId) {
 function renderGames() {
   gameArea.innerHTML =
     '<div class="card-grid">' +
-      '<article class="card"><h3>Game 1</h3><p>The first puzzle is playable in this prototype.</p><button class="button" data-game="game1">Play</button></article>' +
+      '<article class="card"><h3>FiveWink</h3><p>Wink your way to the word.</p><button class="button" data-game="game1">Play</button></article>' +
       '<article class="card"><h3>Game 2</h3><p>Another independent game slot for future development.</p><button class="button secondary" data-game="game2">Coming Soon</button></article>' +
       '<article class="card"><h3>Game 3</h3><p>A third independent game slot for future development.</p><button class="button secondary" data-game="game3">Coming Soon</button></article>' +
     '</div>';

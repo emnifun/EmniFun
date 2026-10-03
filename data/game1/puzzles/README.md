@@ -1,6 +1,6 @@
-# Game 1 puzzle data
+# FiveWink puzzle data
 
-Game 1 uses one separate word file and one separate clue file for every daily puzzle.
+FiveWink uses one separate word file and one separate clue file for every daily puzzle.
 
 Master vocabulary remains separate:
 
@@ -85,13 +85,13 @@ For 2026-10-08:
 5. Use the same game, date, and puzzle ID in both files.
 6. Add the matching paths to index.json.
 
-The answer must exist in the Game 1 vocabulary/answer-candidate files.
+The answer must exist in the FiveWink vocabulary/answer-candidate files.
 Start with draft and publish only when ready.
 
 ## Service synchronization
 
 The data service loads the two date-specific files and combines them into the existing
-Game 1 puzzle object. The UI and game logic do not know where the files are stored.
+FiveWink puzzle object. The UI and game logic do not know where the files are stored.
 
     daily word file
            +
@@ -101,7 +101,7 @@ Game 1 puzzle object. The UI and game logic do not know where the files are stor
            ↓
    complete puzzle object
            ↓
-        Game 1
+        FiveWink
 
 ## Validation
 
@@ -111,7 +111,7 @@ The service fails clearly when:
 - a clue file is missing;
 - dates or game IDs do not match;
 - IDs do not match the date;
-- the answer is missing, malformed, or absent from the existing Game 1 answer systems;
+- the answer is missing, malformed, or absent from the existing FiveWink answer systems;
 - there are not exactly five non-empty clues;
 - the index contains an ambiguous duplicate date or ID.
 

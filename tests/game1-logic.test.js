@@ -1,5 +1,5 @@
 /**
- * Game 1 gameplay checks using an injected vocabulary.
+ * FiveWink gameplay checks using an injected vocabulary.
  */
 import {
   GAME1_CONFIG,
@@ -194,7 +194,7 @@ const validWords = new Set([
   assert(isGuessAlreadyUsed(firstSession, "APPLE"), "APPLE should be used in the first session.");
 
   const secondSession = createGame1State(validWords);
-  assert(!isGuessAlreadyUsed(secondSession, "APPLE"), "A new Game 1 session must start with an empty duplicate set.");
+  assert(!isGuessAlreadyUsed(secondSession, "APPLE"), "A new FiveWink session must start with an empty duplicate set.");
   assert(submitNormalGuess(secondSession, "APPLE", "HOUSE").ok, "The same word must be allowed in a new session.");
 }
 
@@ -245,4 +245,4 @@ const validWords = new Set([
 assert(GAME1_CONFIG.normalAttempts === 6, "Six normal attempts must remain configured.");
 assert(GAME1_CONFIG.clueCount === 5, "Five clues must remain configured.");
 assert(GAME1_CONFIG.seventhAttemptCloseRule === "exact-answer", "The seventh close rule must use the configured exact-answer rule.");
-console.log("Game 1 logic checks passed.");
+console.log("FiveWink logic checks passed.");

@@ -1,5 +1,5 @@
 /**
- * Game 1 data-service checks.
+ * FiveWink data-service checks.
  *
  * These run in a browser/server test environment with fetch available.
  */
@@ -38,7 +38,7 @@ for (const word of ["EMACS", "NIMBY", "CCITT", "ACCRA", "ZILLA", "ADMRX", "APPMT
   assert(!data.validWords.has(word), "Obvious source-marked or malformed entry should be filtered: " + word);
 }
 
-assert(data.puzzleIndex.game === "game1", "Puzzle archive index must be for Game 1.");
+assert(data.puzzleIndex.game === "game1", "Puzzle archive index must be for FiveWink.");
 assert(
   data.puzzleIndex.puzzles.every((entry) =>
     entry.wordPath === "Word/" + entry.date.slice(0, 4) + "/" + entry.date + ".json" &&
@@ -46,7 +46,7 @@ assert(
   ),
   "Every archive entry must use the canonical date-wise word and clue paths."
 );
-assert(data.puzzleIndex.puzzles.length === 6, "All six existing Game 1 dates must remain indexed.");
+assert(data.puzzleIndex.puzzles.length === 6, "All six existing FiveWink dates must remain indexed.");
 
 const today = await getPublishedPuzzleForDate("2026-10-03");
 assert(today?.answer === "HOUSE", "Published puzzle for October 3 should load from the split schedule/clue data.");
@@ -230,4 +230,4 @@ for (const badRecord of [
   assert(threw, "Malformed puzzle data must fail validation.");
 }
 
-console.log("Game 1 data checks passed.");
+console.log("FiveWink data checks passed.");
