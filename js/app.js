@@ -9,6 +9,8 @@ const navLinks = [...document.querySelectorAll(".nav-link")];
 const viewLinks = [...document.querySelectorAll("[data-view]")];
 const gamesView = document.querySelector("#games");
 const gameArea = document.querySelector("#game-area");
+const mobileMenuToggle = document.querySelector("#mobile-menu-toggle");
+const primaryNavigation = document.querySelector("#primary-navigation");
 
 const DEFAULT_ROUTE = "home";
 const PRIMARY_ROUTES = new Set(["home", "games", "statistics", "archive", "login"]);
@@ -24,7 +26,31 @@ function normalizeRoute(route) {
   return ROUTES.has(route) ? route : DEFAULT_ROUTE;
 }
 
+function closeMobileNavigation() {
+  primaryNavigation.classList.remove("mobile-open");
+  mobileMenuToggle.classList.remove("is-open");
+  mobileMenuToggle.setAttribute("aria-expanded", "false");
+  mobileMenuToggle.setAttribute("aria-label", "Open navigation");
+}
+
+function openMobileNavigation() {
+  primaryNavigation.classList.add("mobile-open");
+  mobileMenuToggle.classList.add("is-open");
+  mobileMenuToggle.setAttribute("aria-expanded", "true");
+  mobileMenuToggle.setAttribute("aria-label", "Close navigation");
+}
+
+function toggleMobileNavigation() {
+  const isOpen = primaryNavigation.classList.contains("mobile-open");
+  if (isOpen) {
+    closeMobileNavigation();
+  } else {
+    openMobileNavigation();
+  }
+}
+
 function navigateTo(route) {
+  closeMobileNavigation();
   const nextRoute = normalizeRoute(route);
 
   if (getRouteFromHash() === nextRoute) {
@@ -49,6 +75,8 @@ function renderRoute(route) {
   navLinks.forEach((link) => {
     link.classList.toggle("active", link.dataset.view === viewId);
   });
+
+  closeMobileNavigation();
 
   if (viewId === "games") {
     if (isGame1) {
@@ -103,6 +131,34 @@ function renderStatistics() {
 }
 
 function setupNavigation() {
+  mobileMenuToggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleMobileNavigation();
+  });
+
+  primaryNavigation.addEventListener("click", (event) => {
+    if (event.target.closest("[data-view]")) {
+      closeMobileNavigation();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (
+      primaryNavigation.classList.contains("mobile-open") &&
+      !primaryNavigation.contains(event.target) &&
+      !mobileMenuToggle.contains(event.target)
+    ) {
+      closeMobileNavigation();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && primaryNavigation.classList.contains("mobile-open")) {
+      closeMobileNavigation();
+      mobileMenuToggle.focus();
+    }
+  });
+
   viewLinks.forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault();
