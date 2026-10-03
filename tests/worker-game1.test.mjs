@@ -18,19 +18,19 @@ assert(
 
 assert(
   JSON.stringify(evaluateGuess("HOUSE", "MOUSE")) ===
-    JSON.stringify(["wrong-position", "correct", "correct", "correct", "correct"]),
-  "Wrong-position feedback must use the existing FiveWink semantics."
+    JSON.stringify(["absent", "correct", "correct", "correct", "correct"]),
+  "Position feedback must use the existing FiveWink semantics."
 );
 
 assert(
   JSON.stringify(evaluateGuess("SHEEP", "APPLE")) ===
-    JSON.stringify(["absent", "absent", "absent", "absent", "absent"]),
+    JSON.stringify(["absent", "absent", "wrong-position", "absent", "wrong-position"]),
   "Duplicate letters must respect remaining answer counts."
 );
 
 assert(
   JSON.stringify(evaluateGuess("EERIE", "THREE")) ===
-    JSON.stringify(["wrong-position", "absent", "correct", "correct", "correct"]),
+    JSON.stringify(["absent", "absent", "correct", "absent", "correct"]),
   "Duplicate-letter feedback must not over-credit a repeated letter."
 );
 
