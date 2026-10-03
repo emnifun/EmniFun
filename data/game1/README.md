@@ -46,8 +46,8 @@ ONE DATE = ONE WORD FILE + ONE CLUE FILE
 
 Example for 2026-10-03:
 
-data/game1/puzzles/words/2026/2026-10-03.json
-data/game1/puzzles/clues/2026/2026-10-03.json
+data/game1/puzzles/Word/2026/2026-10-03.json
+data/game1/puzzles/Clue/2026/2026-10-03.json
 
 The word file contains the answer and status for that date only.
 The clue file contains the five clues for that date only.
@@ -90,8 +90,8 @@ Example entry:
   "id": "game1-2026-10-03",
   "game": "game1",
   "date": "2026-10-03",
-  "wordPath": "words/2026/2026-10-03.json",
-  "cluePath": "clues/2026/2026-10-03.json"
+  "wordPath": "Word/2026/2026-10-03.json",
+  "cluePath": "Clue/2026/2026-10-03.json"
 }
 
 The index does not duplicate answer or clue text.
@@ -108,9 +108,9 @@ and combines them into the same puzzle object Game 1 already expects:
 
 For 2026-10-08:
 
-1. Create puzzles/words/2026/2026-10-08.json.
+1. Create puzzles/Word/2026/2026-10-08.json.
 2. Put the selected answer and status in it.
-3. Create puzzles/clues/2026/2026-10-08.json.
+3. Create puzzles/Clue/2026/2026-10-08.json.
 4. Put exactly five clues in it.
 5. Use date 2026-10-08 in both files.
 6. Add the matching wordPath and cluePath entry to index.json.
@@ -130,8 +130,8 @@ Status belongs to the daily word record.
 
 The same pattern works for every year:
 
-    puzzles/words/2027/2027-01-01.json
-    puzzles/clues/2027/2027-01-01.json
+    puzzles/Word/2027/2027-01-01.json
+    puzzles/Clue/2027/2027-01-01.json
 
 Existing answers, clues, dates, IDs, and statuses must be preserved exactly during migrations.
 ## Static-site privacy limitation

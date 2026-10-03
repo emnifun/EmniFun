@@ -41,8 +41,8 @@ for (const word of ["EMACS", "NIMBY", "CCITT", "ACCRA", "ZILLA", "ADMRX", "APPMT
 assert(data.puzzleIndex.game === "game1", "Puzzle archive index must be for Game 1.");
 assert(
   data.puzzleIndex.puzzles.every((entry) =>
-    entry.wordPath === "words/" + entry.date.slice(0, 4) + "/" + entry.date + ".json" &&
-    entry.cluePath === "clues/" + entry.date.slice(0, 4) + "/" + entry.date + ".json"
+    entry.wordPath === "Word/" + entry.date.slice(0, 4) + "/" + entry.date + ".json" &&
+    entry.cluePath === "Clue/" + entry.date.slice(0, 4) + "/" + entry.date + ".json"
   ),
   "Every archive entry must use the canonical date-wise word and clue paths."
 );
@@ -93,8 +93,8 @@ const validWord = validateDailyWordRecord(
     id: "game1-2026-10-08",
     game: "game1",
     date: "2026-10-08",
-    wordPath: "words/2026/2026-10-08.json",
-    cluePath: "clues/2026/2026-10-08.json"
+    wordPath: "Word/2026/2026-10-08.json",
+    cluePath: "Clue/2026/2026-10-08.json"
   }
 );
 assert(validWord.answer === "HOUSE", "Daily word file should validate its answer.");
@@ -110,8 +110,8 @@ const validClue = validateDailyClueRecord(
     id: "game1-2026-10-08",
     game: "game1",
     date: "2026-10-08",
-    wordPath: "words/2026/2026-10-08.json",
-    cluePath: "clues/2026/2026-10-08.json"
+    wordPath: "Word/2026/2026-10-08.json",
+    cluePath: "Clue/2026/2026-10-08.json"
   }
 );
 assert(validClue.clues.length === 5, "Daily clue file should validate exactly five clues.");

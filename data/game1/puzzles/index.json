@@ -6,43 +6,43 @@
       "id": "game1-2026-10-02",
       "game": "game1",
       "date": "2026-10-02",
-      "wordPath": "words/2026/2026-10-02.json",
-      "cluePath": "clues/2026/2026-10-02.json"
+      "wordPath": "Word/2026/2026-10-02.json",
+      "cluePath": "Clue/2026/2026-10-02.json"
     },
     {
       "id": "game1-2026-10-03",
       "game": "game1",
       "date": "2026-10-03",
-      "wordPath": "words/2026/2026-10-03.json",
-      "cluePath": "clues/2026/2026-10-03.json"
+      "wordPath": "Word/2026/2026-10-03.json",
+      "cluePath": "Clue/2026/2026-10-03.json"
     },
     {
       "id": "game1-2026-10-04",
       "game": "game1",
       "date": "2026-10-04",
-      "wordPath": "words/2026/2026-10-04.json",
-      "cluePath": "clues/2026/2026-10-04.json"
+      "wordPath": "Word/2026/2026-10-04.json",
+      "cluePath": "Clue/2026/2026-10-04.json"
     },
     {
       "id": "game1-2026-10-05",
       "game": "game1",
       "date": "2026-10-05",
-      "wordPath": "words/2026/2026-10-05.json",
-      "cluePath": "clues/2026/2026-10-05.json"
+      "wordPath": "Word/2026/2026-10-05.json",
+      "cluePath": "Clue/2026/2026-10-05.json"
     },
     {
       "id": "game1-2026-10-06",
       "game": "game1",
       "date": "2026-10-06",
-      "wordPath": "words/2026/2026-10-06.json",
-      "cluePath": "clues/2026/2026-10-06.json"
+      "wordPath": "Word/2026/2026-10-06.json",
+      "cluePath": "Clue/2026/2026-10-06.json"
     },
     {
       "id": "game1-2026-10-07",
       "game": "game1",
       "date": "2026-10-07",
-      "wordPath": "words/2026/2026-10-07.json",
-      "cluePath": "clues/2026/2026-10-07.json"
+      "wordPath": "Word/2026/2026-10-07.json",
+      "cluePath": "Clue/2026/2026-10-07.json"
     }
   ]
 }

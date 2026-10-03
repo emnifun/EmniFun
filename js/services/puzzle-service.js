@@ -19,8 +19,8 @@ export const PUZZLE_STATUS = Object.freeze({
 });
 
 const VALID_PUZZLE_STATUSES = new Set(Object.values(PUZZLE_STATUS));
-const DAILY_WORD_PATH_PATTERN = /^words/\d{4}/\d{4}-\d{2}-\d{2}\.json$/;
-const DAILY_CLUE_PATH_PATTERN = /^clues/\d{4}/\d{4}-\d{2}-\d{2}\.json$/;
+const DAILY_WORD_PATH_PATTERN = /^Word\/\d{4}\/\d{4}-\d{2}-\d{2}\.json$/;
+const DAILY_CLUE_PATH_PATTERN = /^Clue\/\d{4}\/\d{4}-\d{2}-\d{2}\.json$/;
 
 let game1DataPromise = null;
 
@@ -92,17 +92,17 @@ function validatePuzzleIndex(index) {
     if (
       typeof entry.wordPath !== "string" ||
       !DAILY_WORD_PATH_PATTERN.test(entry.wordPath) ||
-      entry.wordPath !== "words/" + year + "/" + date + ".json"
+      entry.wordPath !== "Word/" + year + "/" + date + ".json"
     ) {
-      throw new PuzzleDataError("Puzzle index wordPath must match words/YYYY/YYYY-MM-DD.json.");
+      throw new PuzzleDataError("Puzzle index wordPath must match Word/YYYY/YYYY-MM-DD.json.");
     }
 
     if (
       typeof entry.cluePath !== "string" ||
       !DAILY_CLUE_PATH_PATTERN.test(entry.cluePath) ||
-      entry.cluePath !== "clues/" + year + "/" + date + ".json"
+      entry.cluePath !== "Clue/" + year + "/" + date + ".json"
     ) {
-      throw new PuzzleDataError("Puzzle index cluePath must match clues/YYYY/YYYY-MM-DD.json.");
+      throw new PuzzleDataError("Puzzle index cluePath must match Clue/YYYY/YYYY-MM-DD.json.");
     }
 
     seenDates.add(date);

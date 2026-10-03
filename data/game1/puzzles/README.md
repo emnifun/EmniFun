@@ -10,12 +10,12 @@ Master vocabulary remains separate:
 ## Folder structure
 
     puzzles/
-    ├── words/
+    ├── Word/
     │   └── 2026/
     │       ├── 2026-10-02.json
     │       ├── 2026-10-03.json
     │       └── ...
-    ├── clues/
+    ├── Clue/
     │   └── 2026/
     │       ├── 2026-10-02.json
     │       ├── 2026-10-03.json
@@ -29,7 +29,7 @@ For 2026-10-03:
 
 Word file:
 
-    words/2026/2026-10-03.json
+    Word/2026/2026-10-03.json
 
     {
       "id": "game1-2026-10-03",
@@ -41,7 +41,7 @@ Word file:
 
 Clue file:
 
-    clues/2026/2026-10-03.json
+    Clue/2026/2026-10-03.json
 
     {
       "id": "game1-2026-10-03",
@@ -68,8 +68,8 @@ Each entry points to exactly one daily word file and one daily clue file.
       "id": "game1-2026-10-03",
       "game": "game1",
       "date": "2026-10-03",
-      "wordPath": "words/2026/2026-10-03.json",
-      "cluePath": "clues/2026/2026-10-03.json"
+      "wordPath": "Word/2026/2026-10-03.json",
+      "cluePath": "Clue/2026/2026-10-03.json"
     }
 
 The index does not contain the answer or clue text.
@@ -78,9 +78,9 @@ The index does not contain the answer or clue text.
 
 For 2026-10-08:
 
-1. Create puzzles/words/2026/2026-10-08.json.
+1. Create puzzles/Word/2026/2026-10-08.json.
 2. Put the answer and status in that file.
-3. Create puzzles/clues/2026/2026-10-08.json.
+3. Create puzzles/Clue/2026/2026-10-08.json.
 4. Put exactly five clues in that file.
 5. Use the same game, date, and puzzle ID in both files.
 6. Add the matching paths to index.json.
@@ -119,8 +119,8 @@ It does not silently substitute another date or answer.
 
 ## Future years
 
-    words/2027/2027-01-01.json
-    clues/2027/2027-01-01.json
+    Word/2027/2027-01-01.json
+    Clue/2027/2027-01-01.json
 
 ## Static-site limitation
 
