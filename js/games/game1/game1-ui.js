@@ -119,11 +119,16 @@ export async function renderGame1(container) {
     root.focus({ preventScroll: true });
   }
 
+  function syncKeyboardVisibility() {
+    keyboard.classList.toggle("hidden", state.status === "finished");
+  }
+
   function finishGame() {
     const history = buildPlayerHistoryRecord(state, puzzle);
     recordGameResult(GAME1_ID, history);
     void saveGameResult(GAME1_ID, history);
     renderResult();
+    syncKeyboardVisibility();
   }
 
   function renderResult() {
