@@ -221,19 +221,24 @@ export async function renderGame1(container) {
     }).join("");
 
     const seventh =
-      state.status === "awaiting-seventh"
+      (state.status === "awaiting-seventh" || state.seventhGuessUsed)
         ? `
           <div class="seventh-stage">
             <div class="close-banner">You failed — but are you close?</div>
             <div class="game-row seventh-row">
-              ${Array.from({ length: 5 }, (_, index) =>
-                `<span class="letter-cell">${currentInput[index] || ""}</span>`
-              ).join("")}
+              ${Array.from({ length: 5 }, (_, index) => {
+                const value =
+                  state.guesses[GAME1_CONFIG.normalAttempts]?.[index] ||
+                  (state.status === "awaiting-seventh" ? currentInput[index] || "" : "");
+                const status = state.feedback[GAME1_CONFIG.normalAttempts]?.[index] || "";
+                return `<span class="letter-cell ${status}">${value}</span>`;
+              }).join("")}
             </div>
+            ${state.status === "awaiting-seventh" ? `
             <div class="seventh-actions">
               <button class="button" id="seventh-submit" type="button">Submit 7th Guess</button>
               <button class="button secondary" id="seventh-skip" type="button">Skip Final Guess</button>
-            </div>
+            </div>` : ""}
           </div>`
         : "";
 
