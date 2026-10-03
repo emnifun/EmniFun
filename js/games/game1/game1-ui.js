@@ -129,6 +129,14 @@ export async function renderGame1(container) {
   const handleClueViewportChange = () => syncCluePanelForViewport();
   clueMediaQuery.addEventListener?.("change", handleClueViewportChange);
 
+  const handleNativeKeyboardViewportChange = () => {
+    if (!mobileQuery.matches) {
+      closeNativeKeyboardConfirmation();
+      if (nativeKeyboardMode) setNativeKeyboardMode(false);
+    }
+  };
+  mobileQuery.addEventListener?.("change", handleNativeKeyboardViewportChange);
+
   function showMessage(message = "", temporary = false) {
     if (messageTimeout) {
       clearTimeout(messageTimeout);
@@ -148,11 +156,14 @@ export async function renderGame1(container) {
   }
 
   function focusGame() {
-    if (nativeKeyboardMode) {
+    if (
+      nativeKeyboardMode &&
+      (state.status === "playing" || state.status === "awaiting-seventh")
+    ) {
       nativeKeyboardInput.focus({ preventScroll: true });
       return;
     }
-    root.focus();
+    root.focus({ preventScroll: true });
   }
 
   function hasNativeKeyboardPreference() {
@@ -176,7 +187,7 @@ export async function renderGame1(container) {
   }
 
   function setNativeKeyboardMode(enabled) {
-    if (!isMobileGameViewport()) return;
+    if (enabled && !isMobileGameViewport()) return;
 
     nativeKeyboardMode = enabled;
     root.classList.toggle("native-keyboard-mode", enabled);
