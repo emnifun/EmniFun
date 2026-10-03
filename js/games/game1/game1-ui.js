@@ -244,6 +244,12 @@ export async function renderGame1(container) {
       nativeKeyboardInput.readOnly = false;
       nativeKeyboardInput.value = currentInput;
 
+      // Explicitly re-arm the same input on every native-mode transition.
+      // Some mobile browsers retain the previous keyboard dismissal state;
+      // blurring first makes the next focus a fresh editable-input focus.
+      nativeKeyboardInput.blur();
+      nativeKeyboardInput.value = currentInput;
+
       // Prepare the one-time positioning before focus so the keyboard's
       // visual-viewport resize can trigger the positioning exactly once.
       scheduleNativeKeyboardPositioning();
@@ -259,6 +265,8 @@ export async function renderGame1(container) {
     nativeKeyboardToggle.classList.add("hidden");
     cancelNativeKeyboardPositioning();
 
+    // Explicitly release the native input before restoring the custom
+    // keyboard. The next native-mode activation will re-arm and focus it.
     nativeKeyboardInput.blur();
     nativeKeyboardInput.value = currentInput;
     focusGame();
