@@ -28,22 +28,19 @@ async function getSigningKey(secret, usages) {
   );
 }
 
-async function signPayload(encodedPayload, secret) {
+export async function createGameToken(payload, secret) {
+  const encodedPayload = base64UrlEncode(
+    textEncoder.encode(JSON.stringify(payload))
+  );
+
   const key = await getSigningKey(secret, ["sign"]);
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
     textEncoder.encode(encodedPayload)
   );
-  return base64UrlEncode(new Uint8Array(signature));
-}
 
-export async function createGameToken(payload, secret) {
-  const encodedPayload = base64UrlEncode(
-    textEncoder.encode(JSON.stringify(payload))
-  );
-  const signature = await signPayload(encodedPayload, secret);
-  return encodedPayload + "." + signature;
+  return encodedPayload + "." + base64UrlEncode(new Uint8Array(signature));
 }
 
 export async function verifyGameToken(token, secret) {
@@ -79,6 +76,8 @@ export async function verifyGameToken(token, secret) {
       !payload ||
       payload.v !== 1 ||
       payload.game !== "game1" ||
+      typeof payload.sessionId !== "string" ||
+      !/^[0-9a-f-]{20,64}$/i.test(payload.sessionId) ||
       typeof payload.puzzleId !== "string" ||
       typeof payload.date !== "string" ||
       !Number.isInteger(payload.exp) ||
@@ -87,83 +86,19 @@ export async function verifyGameToken(token, secret) {
       return { ok: false, message: "Game session has expired." };
     }
 
-    if (
-      !Array.isArray(payload.attempts) ||
-      payload.attempts.length !== 6 ||
-      !Array.isArray(payload.guesses) ||
-      payload.guesses.length > 6 ||
-      !Array.isArray(payload.clues) ||
-      payload.clues.length !== 5 ||
-      !Number.isInteger(payload.cluesUsed) ||
-      payload.cluesUsed < 0 ||
-      payload.cluesUsed > 5 ||
-      typeof payload.seventhGuessUsed !== "boolean" ||
-      !["playing", "awaiting-seventh", "finished"].includes(payload.status) ||
-      (payload.seventhGuess !== null && !/^[A-Z]{5}$/.test(payload.seventhGuess))
-    ) {
-      return { ok: false, message: "Game session data is invalid." };
-    }
-
-    const allowedAttemptValues = new Set(["guess", "clue"]);
-    if (payload.attempts.some((value) => value !== null && !allowedAttemptValues.has(value))) {
-      return { ok: false, message: "Game session data is invalid." };
-    }
-
-    const guessCount = payload.attempts.filter((value) => value === "guess").length;
-    const clueCount = payload.attempts.filter((value) => value === "clue").length;
-
-    if (guessCount !== payload.guesses.length || clueCount !== payload.cluesUsed) {
-      return { ok: false, message: "Game session data is invalid." };
-    }
-
-    if (
-      payload.guesses.some(
-        (guess) => typeof guess !== "string" || !/^[A-Z]{5}$/.test(guess)
-      ) ||
-      new Set(payload.guesses).size !== payload.guesses.length
-    ) {
-      return { ok: false, message: "Game session data is invalid." };
-    }
-
-    if (
-      payload.seventhGuess !== null &&
-      payload.guesses.includes(payload.seventhGuess)
-    ) {
-      return { ok: false, message: "Game session data is invalid." };
-    }
-
-    const allowedClueStates = new Set(["available", "used", "skipped"]);
-    if (payload.clues.some((value) => !allowedClueStates.has(value))) {
-      return { ok: false, message: "Game session data is invalid." };
-    }
-
-    if (payload.clues.filter((value) => value === "used").length !== payload.cluesUsed) {
-      return { ok: false, message: "Game session data is invalid." };
-    }
-
-    if (payload.seventhGuessUsed !== (payload.seventhGuess !== null)) {
-      return { ok: false, message: "Game session data is invalid." };
-    }
-
     return { ok: true, payload };
   } catch (error) {
     return { ok: false, message: "Game session is invalid." };
   }
 }
 
-export function createFreshGameTokenPayload(puzzleId, date) {
+export function createFreshGameTokenPayload(sessionId, puzzleId, date) {
   return {
     v: 1,
     game: "game1",
+    sessionId,
     puzzleId,
     date,
-    attempts: Array(6).fill(null),
-    guesses: [],
-    clues: Array(5).fill("available"),
-    cluesUsed: 0,
-    seventhGuessUsed: false,
-    seventhGuess: null,
-    status: "playing",
     exp: Math.floor(Date.now() / 1000) + 36 * 60 * 60
   };
 }
