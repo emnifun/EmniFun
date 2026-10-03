@@ -61,9 +61,9 @@ export async function renderGame1(container) {
         </div>
         <button class="button secondary" type="button" id="game1-back">Back to Games</button>
       </div>
-      <div id="game1-message" class="game-message" aria-live="polite"></div>
       <div class="game1-layout">
         <div class="game1-play-area">
+          <div id="game1-message" class="game-message" aria-live="polite"></div>
           <div id="game1-board" class="game-board"></div>
           <div id="game1-keyboard" class="keyboard" aria-label="On-screen keyboard"></div>
         </div>
@@ -356,14 +356,23 @@ export async function renderGame1(container) {
 
   function renderKeyboard() {
     const letterStates = getKeyboardLetterStates();
+    const rows = [
+      ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+      ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+      ["ENTER", "Z", "X", "C", "V", "B", "N", "M", "BACKSPACE"]
+    ];
 
-    keyboard.innerHTML =
-      LETTERS.split("").map((letter) => {
-        const status = letterStates[letter] || "";
-        return `<button type="button" class="key ${status}" data-key="${letter}">${letter}</button>`;
-      }).join("") +
-      '<button type="button" class="key wide" data-key="BACKSPACE">⌫</button>' +
-      '<button type="button" class="key wide" data-key="ENTER">Enter</button>';
+    const renderKey = (key) => {
+      const isSpecial = key === "ENTER" || key === "BACKSPACE";
+      const label = key === "BACKSPACE" ? "⌫" : key === "ENTER" ? "Enter" : key;
+      const status = letterStates[key] || "";
+      const specialClass = isSpecial ? " special" : "";
+      return `<button type="button" class="key${specialClass} ${status}" data-key="${key}">${label}</button>`;
+    };
+
+    keyboard.innerHTML = rows.map((row, index) =>
+      `<div class="keyboard-row keyboard-row-${index + 1}">${row.map(renderKey).join("")}</div>`
+    ).join("");
   }
 
   function addInputKey(key) {
