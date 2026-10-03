@@ -1,0 +1,30 @@
+{
+  "game": "game1",
+  "year": 2026,
+  "puzzles": {
+    "2026-10-02": {
+      "answer": "APPLE",
+      "status": "published"
+    },
+    "2026-10-03": {
+      "answer": "HOUSE",
+      "status": "published"
+    },
+    "2026-10-04": {
+      "answer": "TRAIN",
+      "status": "unpublished"
+    },
+    "2026-10-05": {
+      "answer": "BRAVE",
+      "status": "draft"
+    },
+    "2026-10-06": {
+      "answer": "CLOUD",
+      "status": "unpublished"
+    },
+    "2026-10-07": {
+      "answer": "GRAPE",
+      "status": "archived"
+    }
+  }
+}
