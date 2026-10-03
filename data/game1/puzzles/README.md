@@ -1,180 +1,130 @@
 # Game 1 puzzle data
 
-Game 1 daily answers and clues are stored separately.
+Game 1 uses one separate word file and one separate clue file for every daily puzzle.
 
-The answer candidate pool is stored separately in:
+Master vocabulary remains separate:
 
-`../vocabulary/answers.json`
-
-That file only says which words are eligible to become answers. It does **not** decide which word is used on which date.
+    ../vocabulary/valid-guesses.json
+    ../vocabulary/answers.json
 
 ## Folder structure
 
-```
-puzzles/
-├── index.json
-├── README.md
-├── schedule/
-│   └── 2026.json
-└── clues/
-    └── 2026.json
-```
+    puzzles/
+    ├── words/
+    │   └── 2026/
+    │       ├── 2026-10-02.json
+    │       ├── 2026-10-03.json
+    │       └── ...
+    ├── clues/
+    │   └── 2026/
+    │       ├── 2026-10-02.json
+    │       ├── 2026-10-03.json
+    │       └── ...
+    ├── index.json
+    └── README.md
 
-## Answer schedule
+## One date = one word file + one clue file
 
-Yearly schedule files determine:
+For 2026-10-03:
 
-`DATE → ANSWER + STATUS`
+Word file:
 
-Example:
+    words/2026/2026-10-03.json
 
-```json
-{
-  "game": "game1",
-  "year": 2026,
-  "puzzles": {
-    "2026-10-08": {
-      "answer": "APPLE",
-      "status": "draft"
+    {
+      "id": "game1-2026-10-03",
+      "game": "game1",
+      "date": "2026-10-03",
+      "answer": "HOUSE",
+      "status": "published"
     }
-  }
-}
-```
 
-The schedule does not contain clue text.
+Clue file:
 
-## Clue data
+    clues/2026/2026-10-03.json
 
-Yearly clue files determine:
-
-`DATE → FIVE CLUES`
-
-Example:
-
-```json
-{
-  "game": "game1",
-  "year": 2026,
-  "puzzles": {
-    "2026-10-08": {
-      "id": "game1-2026-10-08",
+    {
+      "id": "game1-2026-10-03",
+      "game": "game1",
+      "date": "2026-10-03",
       "clues": [
-        "Clue 1",
-        "Clue 2",
-        "Clue 3",
-        "Clue 4",
-        "Clue 5"
+        "People live in it.",
+        "It has rooms.",
+        "It usually has a door.",
+        "It can have a roof.",
+        "It is a place to live."
       ]
     }
-  }
-}
-```
 
-The clue entry uses the same date and puzzle ID as the answer schedule.
+The files are synchronized by date and puzzle ID.
+Do not create a yearly file containing all dates.
 
 ## Puzzle index
 
-`index.json` is the archive manifest. It lists the dates that exist and points to the yearly schedule and clue files.
+index.json is the manifest only.
+Each entry points to exactly one daily word file and one daily clue file.
 
-Example:
+    {
+      "id": "game1-2026-10-03",
+      "game": "game1",
+      "date": "2026-10-03",
+      "wordPath": "words/2026/2026-10-03.json",
+      "cluePath": "clues/2026/2026-10-03.json"
+    }
 
-```json
-{
-  "id": "game1-2026-10-08",
-  "game": "game1",
-  "date": "2026-10-08",
-  "schedulePath": "schedule/2026.json",
-  "cluePath": "clues/2026.json"
-}
-```
-
-The index is not a second copy of the answer or clue text.
+The index does not contain the answer or clue text.
 
 ## Create a new daily puzzle
 
-For `2026-10-08`:
+For 2026-10-08:
 
-1. Add the answer and status to `schedule/2026.json`.
-2. Add exactly five clues to `clues/2026.json` under `2026-10-08`.
-3. Add the date to `index.json` with the matching schedule/clue paths.
-4. Start with `"status": "draft"`.
-5. Change the status to `"published"` only when the puzzle is ready for normal play.
+1. Create puzzles/words/2026/2026-10-08.json.
+2. Put the answer and status in that file.
+3. Create puzzles/clues/2026/2026-10-08.json.
+4. Put exactly five clues in that file.
+5. Use the same game, date, and puzzle ID in both files.
+6. Add the matching paths to index.json.
 
-The answer should exist in both vocabulary files used by Game 1.
+The answer must exist in the Game 1 vocabulary/answer-candidate files.
+Start with draft and publish only when ready.
 
-## Statuses
+## Service synchronization
 
-- `draft`
-- `published`
-- `unpublished`
-- `archived`
+The data service loads the two date-specific files and combines them into the existing
+Game 1 puzzle object. The UI and game logic do not know where the files are stored.
 
-Status belongs to the scheduled daily puzzle, not an individual clue.
+    daily word file
+           +
+    daily clue file
+           ↓
+     puzzle service
+           ↓
+   complete puzzle object
+           ↓
+        Game 1
 
-Only `published` puzzles are selected for normal Game 1 play.
+## Validation
 
-## Synchronization
+The service fails clearly when:
 
-The puzzle service uses the date as the synchronization key:
+- a word file is missing;
+- a clue file is missing;
+- dates or game IDs do not match;
+- IDs do not match the date;
+- the answer is missing, malformed, or absent from the existing Game 1 answer systems;
+- there are not exactly five non-empty clues;
+- the index contains an ambiguous duplicate date or ID.
 
-```
-schedule/2026.json
-        │
-        │  date = 2026-10-08
-        ├──────────────┐
-        │              │
-        ▼              ▼
-   answer/status     five clues
-        │              │
-        └──────┬───────┘
-               ▼
-       complete Game 1 puzzle
-```
+It does not silently substitute another date or answer.
 
-Game 1 receives the same complete puzzle object it used before this storage change.
+## Future years
 
-The UI and game logic never read schedule/clue files directly.
+    words/2027/2027-01-01.json
+    clues/2027/2027-01-01.json
 
-## Validation rules
+## Static-site limitation
 
-A scheduled date is not usable if:
+This remains public static JSON. Draft and unpublished data are not secret.
+A future private backend/database can replace the storage implementation.
 
-- its answer is missing or malformed;
-- the answer is not in Game 1's valid vocabulary and curated answer pool;
-- its clue record is missing;
-- its clue record has the wrong puzzle ID/date;
-- it does not contain exactly five non-empty clues;
-- its date/game metadata is malformed;
-- the index creates an ambiguous duplicate date.
-
-The service fails clearly instead of silently choosing a different answer or clue set.
-
-## Static-site privacy limitation
-
-This remains a public static-site architecture. Anyone who can inspect the repository can see draft and unreleased answer/clue data.
-
-Status controls normal gameplay selection; it is not a security boundary.
-
-Before production, unreleased puzzle data should move behind a private backend/database.
-
-## Future admin
-
-The split data model is designed to support a future private workflow:
-
-```
-Create Puzzle
-    ↓
-Select date
-    ↓
-Select answer
-    ↓
-Enter 5 clues
-    ↓
-Save draft
-    ↓
-Preview
-    ↓
-Publish
-```
-
-No admin dashboard is being built as part of this change.
+No admin dashboard, authentication, backend, or database is part of this task.
