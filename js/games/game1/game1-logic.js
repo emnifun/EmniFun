@@ -141,6 +141,8 @@ export function applySeventhGuessResult(state, guess, response) {
   state.seventhGuessUsed = true;
 
   state.usedGuesses.add(normalized);
+  state.guesses.push(normalized);
+  state.feedback.push(response.feedback);
 
   return { ok: true };
 }
