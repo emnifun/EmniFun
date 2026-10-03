@@ -107,6 +107,143 @@ function parseRequestJson(request) {
   });
 }
 
+function parseSession(row) {
+  let attempts;
+  let guesses;
+  let clues;
+
+  try {
+    attempts = JSON.parse(row.attempts_json);
+    guesses = JSON.parse(row.guesses_json);
+    clues = JSON.parse(row.clues_json);
+  } catch (error) {
+    throw new Error("Game session data is invalid.");
+  }
+
+  if (
+    !Array.isArray(attempts) ||
+    attempts.length !== 6 ||
+    !Array.isArray(guesses) ||
+    guesses.length > 6 ||
+    !Array.isArray(clues) ||
+    clues.length !== 5 ||
+    !Number.isInteger(row.clues_used) ||
+    row.clues_used < 0 ||
+    row.clues_used > 5 ||
+    !["playing", "awaiting-seventh", "finished"].includes(row.status) ||
+    (row.seventh_guess !== null && !/^[A-Z]{5}$/.test(row.seventh_guess))
+  ) {
+    throw new Error("Game session data is invalid.");
+  }
+
+  const allowedAttemptValues = new Set(["guess", "clue"]);
+  if (attempts.some((value) => value !== null && !allowedAttemptValues.has(value))) {
+    throw new Error("Game session data is invalid.");
+  }
+
+  if (
+    attempts.filter((value) => value === "guess").length !== guesses.length ||
+    attempts.filter((value) => value === "clue").length !== row.clues_used
+  ) {
+    throw new Error("Game session data is invalid.");
+  }
+
+  if (
+    guesses.some((guess) => !/^[A-Z]{5}$/.test(guess)) ||
+    new Set(guesses).size !== guesses.length
+  ) {
+    throw new Error("Game session data is invalid.");
+  }
+
+  if (row.seventh_guess !== null && guesses.includes(row.seventh_guess)) {
+    throw new Error("Game session data is invalid.");
+  }
+
+  if (
+    clues.some((value) => !["available", "used", "skipped"].includes(value))
+  ) {
+    throw new Error("Game session data is invalid.");
+  }
+
+  if (
+    clues.filter((value) => value === "used").length !== row.clues_used
+  ) {
+    throw new Error("Game session data is invalid.");
+  }
+
+  return {
+    sessionId: row.session_id,
+    puzzleId: row.puzzle_id,
+    game: row.game,
+    date: row.date,
+    attempts,
+    guesses,
+    clues,
+    cluesUsed: row.clues_used,
+    status: row.status,
+    result: row.result,
+    seventhGuess: row.seventh_guess,
+    version: row.version,
+    expiresAt: row.expires_at
+  };
+}
+
+async function loadSession(env, sessionId) {
+  const row = await env.DB.prepare(
+    "SELECT session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json, clues_used, status, result, seventh_guess, version, expires_at FROM fivewink_sessions WHERE session_id = ?1 LIMIT 1"
+  )
+    .bind(sessionId)
+    .first();
+
+  if (!row) {
+    return { ok: false, message: "Game session was not found." };
+  }
+
+  if (row.expires_at <= Math.floor(Date.now() / 1000)) {
+    return { ok: false, message: "Game session has expired." };
+  }
+
+  try {
+    return { ok: true, session: parseSession(row) };
+  } catch (error) {
+    return { ok: false, message: error.message };
+  }
+}
+
+async function saveSession(env, session) {
+  const result = await env.DB.prepare(\`UPDATE fivewink_sessions
+     SET attempts_json = ?1,
+         guesses_json = ?2,
+         clues_json = ?3,
+         clues_used = ?4,
+         status = ?5,
+         result = ?6,
+         seventh_guess = ?7,
+         version = version + 1,
+         updated_at = ?8
+     WHERE session_id = ?9 AND version = ?10\`)
+    .bind(
+      JSON.stringify(session.attempts),
+      JSON.stringify(session.guesses),
+      JSON.stringify(session.clues),
+      session.cluesUsed,
+      session.status,
+      session.result,
+      session.seventhGuess,
+      Math.floor(Date.now() / 1000),
+      session.sessionId,
+      session.version
+    )
+    .run();
+
+  if (result.meta?.changes !== 1) {
+    return { ok: false, message: "The game state changed. Please try again." };
+  }
+
+  session.version += 1;
+  return { ok: true };
+}
+
 async function getPuzzleById(env, puzzleId) {
   return env.DB.prepare(
     "SELECT puzzle_id, game, date, answer, clues_json, status FROM fivewink_puzzles WHERE puzzle_id = ?1 LIMIT 1"
@@ -125,17 +262,56 @@ async function getCurrentPublishedPuzzle(env) {
     .first();
 }
 
-async function issueTokenForPuzzle(puzzle, secret) {
-  const payload = createFreshGameTokenPayload(puzzle.puzzle_id, puzzle.date);
-  return createGameToken(payload, secret);
+async function createSession(env, puzzle) {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + 36 * 60 * 60;
+  const sessionId = crypto.randomUUID();
+
+  await env.DB.prepare(
+    \`INSERT INTO fivewink_sessions
+      (session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json,
+       clues_used, status, result, seventh_guess, version, created_at, updated_at, expires_at)
+     VALUES (?1, ?2, 'game1', ?3, ?4, ?5, ?6, 0, 'playing', NULL, NULL, 1, ?7, ?7, ?8)\`
+  )
+    .bind(
+      sessionId,
+      puzzle.puzzle_id,
+      puzzle.date,
+      JSON.stringify(Array(6).fill(null)),
+      JSON.stringify([]),
+      JSON.stringify(Array(5).fill("available")),
+      now,
+      expiresAt
+    )
+    .run();
+
+  return { sessionId, expiresAt };
 }
 
-function validateSessionForPuzzle(session, puzzleId) {
-  if (session.puzzleId !== puzzleId) {
-    return { ok: false, message: "Game session does not match this puzzle." };
+async function createSessionToken(session, secret) {
+  return createGameToken(
+    createFreshGameTokenPayload(
+      session.sessionId,
+      session.puzzleId,
+      session.date
+    ),
+    secret
+  );
+}
+
+function validatePuzzleForPlay(puzzle) {
+  if (
+    !puzzle ||
+    puzzle.game !== "game1" ||
+    puzzle.status !== "published" ||
+    typeof puzzle.puzzle_id !== "string" ||
+    typeof puzzle.date !== "string" ||
+    !isFiveLetterGuess(puzzle.answer)
+  ) {
+    throw new Error("The FiveWink puzzle data is invalid.");
   }
 
-  return { ok: true };
+  return parseClues(puzzle.clues_json);
 }
 
 function updateAfterNormalGuess(session, guess, feedback, answer) {
@@ -154,6 +330,8 @@ function updateAfterNormalGuess(session, guess, feedback, answer) {
 
   if (guess === answer) {
     session.status = "finished";
+    session.result = FIVEWINK_RESULTS.SOLVED;
+
     return {
       ok: true,
       solved: true,
@@ -167,6 +345,7 @@ function updateAfterNormalGuess(session, guess, feedback, answer) {
 
   if (attemptIndex === 5) {
     session.status = "awaiting-seventh";
+
     return {
       ok: true,
       solved: false,
@@ -187,7 +366,7 @@ function updateAfterNormalGuess(session, guess, feedback, answer) {
   };
 }
 
-async function handlePuzzle(request, env) {
+async function handlePuzzle(env) {
   requireConfiguredEnvironment(env);
 
   const puzzle = await getCurrentPublishedPuzzle(env);
@@ -202,8 +381,17 @@ async function handlePuzzle(request, env) {
     );
   }
 
-  const clues = parseClues(puzzle.clues_json);
-  const gameToken = await issueTokenForPuzzle(puzzle, env.GAME_TOKEN_SECRET);
+  const clues = validatePuzzleForPlay(puzzle);
+  const session = await createSession(env, puzzle);
+
+  const gameToken = await createSessionToken(
+    {
+      sessionId: session.sessionId,
+      puzzleId: puzzle.puzzle_id,
+      date: puzzle.date
+    },
+    env.GAME_TOKEN_SECRET
+  );
 
   return jsonResponse({
     ok: true,
@@ -221,6 +409,7 @@ async function handleGuess(request, env) {
   const body = await parseRequestJson(request);
   const puzzleId = String(body?.puzzleId ?? "").trim();
   const guess = normalizeGuess(body?.guess);
+
   const tokenResult = await verifyGameToken(
     body?.gameToken,
     env.GAME_TOKEN_SECRET
@@ -230,16 +419,44 @@ async function handleGuess(request, env) {
     return jsonResponse({ ok: false, message: tokenResult.message }, 400);
   }
 
-  const session = tokenResult.payload;
-  const sessionCheck = validateSessionForPuzzle(session, puzzleId);
+  if (tokenResult.payload.puzzleId !== puzzleId) {
+    return jsonResponse(
+      { ok: false, message: "Game session does not match this puzzle." },
+      400
+    );
+  }
 
-  if (!sessionCheck.ok) {
-    return jsonResponse({ ok: false, message: sessionCheck.message }, 400);
+  const sessionResult = await loadSession(
+    env,
+    tokenResult.payload.sessionId
+  );
+
+  if (!sessionResult.ok) {
+    return jsonResponse(
+      { ok: false, message: sessionResult.message },
+      400
+    );
+  }
+
+  const session = sessionResult.session;
+
+  if (
+    session.puzzleId !== tokenResult.payload.puzzleId ||
+    session.date !== tokenResult.payload.date
+  ) {
+    return jsonResponse({ ok: false, message: "Game session is invalid." }, 400);
+  }
+
+  if (session.status === "finished") {
+    return jsonResponse({ ok: false, message: "The game has ended." }, 400);
   }
 
   const puzzle = await getPuzzleById(env, puzzleId);
   if (!puzzle) {
-    return jsonResponse({ ok: false, message: "This puzzle no longer exists." }, 404);
+    return jsonResponse(
+      { ok: false, message: "This puzzle no longer exists." },
+      404
+    );
   }
 
   if (!isFiveLetterGuess(guess)) {
@@ -257,34 +474,33 @@ async function handleGuess(request, env) {
     );
   }
 
-  if (session.status === "finished") {
-    return jsonResponse({ ok: false, message: "The game has ended." }, 400);
-  }
-
   const validWords = await loadValidWords();
 
   if (!validWords.has(guess)) {
     return jsonResponse({ ok: false, message: "Not a valid word." }, 400);
   }
 
-  const feedback = evaluateGuess(guess, puzzle.answer);
+  const answer = normalizeGuess(puzzle.answer);
+  const feedback = evaluateGuess(guess, answer);
 
   if (session.status === "playing") {
     const result = updateAfterNormalGuess(
       session,
       guess,
       feedback,
-      normalizeGuess(puzzle.answer)
+      answer
     );
 
     if (!result.ok) {
       return jsonResponse(result, 400);
     }
 
-    const gameToken = await createGameToken(
-      session,
-      env.GAME_TOKEN_SECRET
-    );
+    const saveResult = await saveSession(env, session);
+    if (!saveResult.ok) {
+      return jsonResponse(saveResult, 409);
+    }
+
+    const gameToken = await createSessionToken(session, env.GAME_TOKEN_SECRET);
 
     return jsonResponse({
       ...result,
@@ -293,15 +509,19 @@ async function handleGuess(request, env) {
   }
 
   if (session.status === "awaiting-seventh") {
-    const result = getSeventhResult(guess, puzzle.answer);
+    const result = getSeventhResult(guess, answer);
+
     session.status = "finished";
+    session.result = result;
     session.seventhGuessUsed = true;
     session.seventhGuess = guess;
 
-    const gameToken = await createGameToken(
-      session,
-      env.GAME_TOKEN_SECRET
-    );
+    const saveResult = await saveSession(env, session);
+    if (!saveResult.ok) {
+      return jsonResponse(saveResult, 409);
+    }
+
+    const gameToken = await createSessionToken(session, env.GAME_TOKEN_SECRET);
 
     return jsonResponse({
       ok: true,
@@ -311,7 +531,7 @@ async function handleGuess(request, env) {
       solved: false,
       finished: true,
       seventhGuessUsed: true,
-      answer: normalizeGuess(puzzle.answer),
+      answer,
       gameToken
     });
   }
@@ -335,12 +555,26 @@ async function handleClue(request, env) {
     return jsonResponse({ ok: false, message: tokenResult.message }, 400);
   }
 
-  const session = tokenResult.payload;
-  const sessionCheck = validateSessionForPuzzle(session, puzzleId);
-
-  if (!sessionCheck.ok) {
-    return jsonResponse({ ok: false, message: sessionCheck.message }, 400);
+  if (tokenResult.payload.puzzleId !== puzzleId) {
+    return jsonResponse(
+      { ok: false, message: "Game session does not match this puzzle." },
+      400
+    );
   }
+
+  const sessionResult = await loadSession(
+    env,
+    tokenResult.payload.sessionId
+  );
+
+  if (!sessionResult.ok) {
+    return jsonResponse(
+      { ok: false, message: sessionResult.message },
+      400
+    );
+  }
+
+  const session = sessionResult.session;
 
   if (session.status !== "playing") {
     return jsonResponse({ ok: false, message: "The game has ended." }, 400);
@@ -374,10 +608,12 @@ async function handleClue(request, env) {
   session.clues[attemptIndex] = "used";
   session.cluesUsed += 1;
 
-  const gameToken = await createGameToken(
-    session,
-    env.GAME_TOKEN_SECRET
-  );
+  const saveResult = await saveSession(env, session);
+  if (!saveResult.ok) {
+    return jsonResponse(saveResult, 409);
+  }
+
+  const gameToken = await createSessionToken(session, env.GAME_TOKEN_SECRET);
 
   return jsonResponse({
     ok: true,
@@ -401,12 +637,26 @@ async function handleSkip(request, env) {
     return jsonResponse({ ok: false, message: tokenResult.message }, 400);
   }
 
-  const session = tokenResult.payload;
-  const sessionCheck = validateSessionForPuzzle(session, puzzleId);
-
-  if (!sessionCheck.ok) {
-    return jsonResponse({ ok: false, message: sessionCheck.message }, 400);
+  if (tokenResult.payload.puzzleId !== puzzleId) {
+    return jsonResponse(
+      { ok: false, message: "Game session does not match this puzzle." },
+      400
+    );
   }
+
+  const sessionResult = await loadSession(
+    env,
+    tokenResult.payload.sessionId
+  );
+
+  if (!sessionResult.ok) {
+    return jsonResponse(
+      { ok: false, message: sessionResult.message },
+      400
+    );
+  }
+
+  const session = sessionResult.session;
 
   if (session.status !== "awaiting-seventh") {
     return jsonResponse(
@@ -417,32 +667,38 @@ async function handleSkip(request, env) {
 
   const puzzle = await getPuzzleById(env, puzzleId);
   if (!puzzle) {
-    return jsonResponse({ ok: false, message: "This puzzle no longer exists." }, 404);
+    return jsonResponse(
+      { ok: false, message: "This puzzle no longer exists." },
+      404
+    );
   }
 
+  const answer = normalizeGuess(puzzle.answer);
   session.status = "finished";
   session.result = FIVEWINK_RESULTS.FAILED_HARD;
   session.seventhGuessUsed = false;
   session.seventhGuess = null;
 
-  const gameToken = await createGameToken(
-    session,
-    env.GAME_TOKEN_SECRET
-  );
+  const saveResult = await saveSession(env, session);
+  if (!saveResult.ok) {
+    return jsonResponse(saveResult, 409);
+  }
+
+  const gameToken = await createSessionToken(session, env.GAME_TOKEN_SECRET);
 
   return jsonResponse({
     ok: true,
     finished: true,
     result: FIVEWINK_RESULTS.FAILED_HARD,
     seventhGuessUsed: false,
-    answer: normalizeGuess(puzzle.answer),
+    answer,
     gameToken
   });
 }
 
 async function handleRequest(request, env) {
   const url = new URL(request.url);
-  const path = url.pathname.replace(/\/+$/, "") || "/";
+  const path = url.pathname.replace(/\\/+$/, "") || "/";
 
   if (request.method === "OPTIONS") {
     return new Response(null, {
@@ -456,7 +712,7 @@ async function handleRequest(request, env) {
   }
 
   if (request.method === "GET" && path === "/api/fivewink/puzzle") {
-    return handlePuzzle(request, env);
+    return handlePuzzle(env);
   }
 
   if (request.method === "POST" && path === "/api/fivewink/guess") {
@@ -480,6 +736,7 @@ export default {
       return await handleRequest(request, env);
     } catch (error) {
       const status = Number.isInteger(error?.status) ? error.status : 500;
+
       return jsonResponse(
         {
           ok: false,
