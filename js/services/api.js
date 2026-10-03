@@ -9,10 +9,11 @@ const FIVEWINK_API_BASE =
   "https://emnifun.emnifun.workers.dev/api/fivewink";
 
 export class FiveWinkApiError extends Error {
-  constructor(message, status = 0) {
+  constructor(message, status = 0, options = {}) {
     super(message);
     this.name = "FiveWinkApiError";
     this.status = status;
+    this.duplicate = Boolean(options.duplicate);
   }
 }
 
@@ -46,7 +47,8 @@ async function requestJson(path, options = {}) {
   if (!response.ok || data?.ok === false) {
     throw new FiveWinkApiError(
       data?.message || "FiveWink could not complete that action.",
-      response.status
+      response.status,
+      { duplicate: data?.duplicate }
     );
   }
 
