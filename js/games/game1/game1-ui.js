@@ -17,6 +17,7 @@ import {
 } from "../../services/puzzle-service.js";
 import { recordGameResult } from "../../statistics/statistics.js";
 import { saveGameResult } from "../../services/api.js";
+import { playFiveWinkSound } from "./game1-sound.js";
 
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -382,7 +383,17 @@ export async function renderGame1(container) {
 
   keyboard.addEventListener("click", (event) => {
     const key = event.target.closest("[data-key]")?.dataset.key;
-    if (key) addInputKey(key);
+    if (!key) return;
+
+    if (key === "ENTER") {
+      playFiveWinkSound("enter");
+    } else if (key === "BACKSPACE") {
+      playFiveWinkSound("backspace");
+    } else {
+      playFiveWinkSound("key");
+    }
+
+    addInputKey(key);
     focusGame();
   });
 
