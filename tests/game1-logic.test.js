@@ -107,6 +107,22 @@ const validWords = new Set([
 
 {
   const state = createGame1State(validWords);
+  assert(useClue(state, 1).ok, "Clue 1 should consume Attempt 1.");
+  assert(submitNormalGuess(state, "APPLE", "HOUSE").ok, "Guess should consume Attempt 2.");
+  assert(useClue(state, 3).ok, "Clue 3 should consume Attempt 3.");
+  assert(submitNormalGuess(state, "CHAIR", "HOUSE").ok, "Guess should consume Attempt 4.");
+  assert(useClue(state, 5).ok, "Clue 5 should consume Attempt 5.");
+  assert(state.attemptNumber === 6, "Mixed clue/guess play should advance to Attempt 6.");
+  assert(!useClue(state, 1).ok, "Clue 1 must remain unavailable after use.");
+  assert(!useClue(state, 3).ok, "Clue 3 must remain unavailable after use.");
+  assert(!useClue(state, 5).ok, "Clue 5 must remain unavailable after use.");
+  assert(!useClue(state, 6).ok, "Attempt 6 must have no clue.");
+  const sixth = submitNormalGuess(state, "GRAPE", "HOUSE");
+  assert(sixth.ok && sixth.seventhStage, "Incorrect Attempt 6 guess should open the existing seventh stage.");
+}
+
+{
+  const state = createGame1State(validWords);
   assert(!useClue(state, 2).ok, "Future Clue 2 must be locked on Attempt 1.");
   assert(!useClue(state, 4).ok, "Future Clue 4 must be locked on Attempt 1.");
   assert(useClue(state, 1).ok, "Clue 1 must be usable.");
