@@ -1,8 +1,7 @@
 # Tests
 
-The current test set covers both the FiveWink rules and the puzzle data layer.
+The FiveWink test set covers the client state layer, the server-side Word/feedback rules, and the backend service boundary.
 
-- `tests/game1-logic.test.js` checks clue consumption, attempt rules, duplicate-letter feedback, seventh-attempt behavior, input sanitizing, and vocabulary validation.
-- `tests/game1-data.test.js` checks the large local vocabulary, answer separation, date-based puzzle loading, status filtering, missing-date behavior, duplicate published-date protection, and puzzle validation.
-
-The data test assumes a browser/server environment with `fetch` available.
+- `tests/game1-logic.test.js` checks client state transitions, clue/attempt progression, seventh-stage behavior, input sanitizing, and answer-reveal boundaries.
+- `tests/worker-game1.test.mjs` checks server-side feedback and duplicate-letter evaluation.
+- `tests/game1-data.test.js` checks that the browser-facing puzzle service accepts backend puzzle metadata without an answer and does not fall back to local answer data.
