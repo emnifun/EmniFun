@@ -364,6 +364,7 @@ export async function renderGame1(container) {
   });
 
   container.querySelector("#game1-back").addEventListener("click", () => {
+    document.title = "EmniFun";
     container.dispatchEvent(new CustomEvent("game1-back"));
   });
 
