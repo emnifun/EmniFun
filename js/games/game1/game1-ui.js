@@ -78,6 +78,7 @@ export async function renderGame1(container) {
   `;
 
   const root = container.querySelector(".game-shell");
+  const playArea = container.querySelector(".game1-play-area");
   const board = container.querySelector("#game1-board");
   const clues = container.querySelector("#game1-clues");
   const keyboard = container.querySelector("#game1-keyboard");
@@ -414,4 +415,12 @@ export async function renderGame1(container) {
   renderClues();
   renderKeyboard();
   focusGame();
+
+  // Position the page once when FiveWink first opens. Later board/keyboard
+  // rerenders do not call this again, so normal player scrolling is preserved.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      playArea.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
+    });
+  });
 }
