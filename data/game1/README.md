@@ -1,165 +1,65 @@
 # FiveWink data
 
-FiveWink keeps three separate kinds of data:
+FiveWink now separates public guess vocabulary from private gameplay data.
 
-1. **Guess vocabulary** — every five-letter word that FiveWink accepts as a guess.
-2. **Answer candidates** — the smaller curated set of words that are suitable to become answers.
-3. **Puzzle archive** — the actual date-based puzzles that you create.
-
-Changing one does not automatically generate or schedule another.
-
-## Guess vocabulary
+## Public guess vocabulary
 
 File:
 
 `data/game1/vocabulary/valid-guesses.json`
 
-This is the comprehensive accepted player-guess vocabulary. The current generated dataset contains **16,273 unique five-letter A-Z entries**.
+This remains public because it is the accepted player-guess vocabulary, not a secret. The current generated dataset contains 16,273 unique five-letter A-Z entries.
 
-There is no artificial maximum and no fixed target size. A word does not have to be a daily answer to be accepted as a guess.
+## Private puzzle data
 
-Regenerate it with:
+Daily FiveWink answers, clues, publication status, and active game-session state are now stored in the Cloudflare D1 database attached to the `emnifun` Worker.
 
-```
-node scripts/generate-game1-vocabulary.mjs
-```
+The browser receives only the currently published puzzle's:
 
-The browser never calls a dictionary API. It loads this local generated file.
+- puzzle ID;
+- date;
+- five clues;
+- signed game-session token.
 
-## Answer candidates
+The browser does not receive the answer during active play.
 
-File:
+The Worker returns the answer only after a legitimate finishing action:
 
-`data/game1/vocabulary/answers.json`
+- a normal solve;
+- the seventh guess;
+- skipping the seventh guess.
 
-This contains the current curated pool of approximately **182 answer candidates**.
-
-These are only eligible answer words. They are **not** the daily schedule, and the program does not cycle through them automatically.
-
-Every answer candidate should also exist in `valid-guesses.json`.
-
-## Puzzle data
-
-FiveWink daily puzzle storage is date-wise:
-
-ONE DATE = ONE WORD FILE + ONE CLUE FILE
-
-Example for 2026-10-03:
-
-data/game1/puzzles/Word/2026/2026-10-03.json
-data/game1/puzzles/Clue/2026/2026-10-03.json
-
-The word file contains the answer and status for that date only.
-The clue file contains the five clues for that date only.
-Both files use game = game1, the same date, and the same puzzle ID.
-
-Word file:
-
-{
-  "id": "game1-2026-10-03",
-  "game": "game1",
-  "date": "2026-10-03",
-  "answer": "HOUSE",
-  "status": "published"
-}
-
-Clue file:
-
-{
-  "id": "game1-2026-10-03",
-  "game": "game1",
-  "date": "2026-10-03",
-  "clues": [
-    "People live in it.",
-    "It has rooms.",
-    "It usually has a door.",
-    "It can have a roof.",
-    "It is a place to live."
-  ]
-}
-
-Do not put multiple dates into one daily word file or one daily clue file.
-
-### Puzzle index
-
-data/game1/puzzles/index.json is only the manifest. Each date points to its two daily files.
-
-Example entry:
-
-{
-  "id": "game1-2026-10-03",
-  "game": "game1",
-  "date": "2026-10-03",
-  "wordPath": "Word/2026/2026-10-03.json",
-  "cluePath": "Clue/2026/2026-10-03.json"
-}
-
-The index does not duplicate answer or clue text.
-
-### Puzzle service
-
-The FiveWink UI and logic do not read word or clue files directly.
-The puzzle service uses the date/index entry, loads that date's two files, validates them,
-and combines them into the same puzzle object FiveWink already expects:
-
-    id + game + date + answer + clues + status
-
-### Create a new daily puzzle
-
-For 2026-10-08:
-
-1. Create puzzles/Word/2026/2026-10-08.json.
-2. Put the selected answer and status in it.
-3. Create puzzles/Clue/2026/2026-10-08.json.
-4. Put exactly five clues in it.
-5. Use date 2026-10-08 in both files.
-6. Add the matching wordPath and cluePath entry to index.json.
-
-Start with status = draft and change it to published when ready.
-
-### Statuses
-
-- draft — being prepared; not selected for normal play.
-- published — the official puzzle for that date.
-- unpublished — exists but is unavailable for normal play.
-- archived — historical puzzle kept for the archive.
-
-Status belongs to the daily word record.
-
-### Future years
-
-The same pattern works for every year:
-
-    puzzles/Word/2027/2027-01-01.json
-    puzzles/Clue/2027/2027-01-01.json
-
-Existing answers, clues, dates, IDs, and statuses must be preserved exactly during migrations.
-## Static-site privacy limitation
-
-This is a public static-site architecture. Any puzzle JSON that is checked into and shipped from a public GitHub repository can be inspected by users, even when its status is `draft` or `unpublished`.
-
-So status controls **normal gameplay selection**, not secrecy.
-
-Before production, unreleased puzzle data should live in a private backend/database. The public frontend should receive only the currently published puzzle.
-
-## Future admin/backend
-
-The puzzle record in these JSON files is already the conceptual data entity that a future admin dashboard and database can use.
-
-Today:
+## Backend flow
 
 ```
-FiveWink → Puzzle Service → Local JSON
+FiveWink
+   ↓
+Puzzle Service
+   ↓
+Cloudflare Worker
+   ↓
+Cloudflare D1
 ```
 
-Later:
+The Worker is authoritative for:
 
-```
-FiveWink → Puzzle Service → Backend API → Database
-                              ↑
-                       Admin Dashboard
-```
+- puzzle selection;
+- accepted-guess validation;
+- feedback generation;
+- clue/attempt progression;
+- seventh-stage progression;
+- answer reveal after game completion.
 
-The FiveWink UI and rules can continue using the same service functions and puzzle fields. The storage implementation can change without redesigning the puzzle record or rewriting the game.
+## Daily puzzle management
 
-Game 2 and Game 3 keep their own data structures. Nothing here requires future games to use FiveWink's five-letter puzzle schema.
+Create and edit puzzle records in the private D1 database.
+
+Do not put future answers or future clue text back into this public repository.
+
+Use `worker/schema.sql` to create the required database tables.
+
+See `worker/README.md` for the Cloudflare setup.
+
+## Important history note
+
+Old Git commits may still contain the pre-backend JSON data because those values existed in earlier public commits. This migration prevents the current working tree and future puzzle records from exposing those values through the frontend. Removing old Git history would require a separate history-rewrite operation.
