@@ -98,7 +98,8 @@ export async function verifyGameToken(token, secret) {
       payload.cluesUsed < 0 ||
       payload.cluesUsed > 5 ||
       typeof payload.seventhGuessUsed !== "boolean" ||
-      !["playing", "awaiting-seventh", "finished"].includes(payload.status)
+      !["playing", "awaiting-seventh", "finished"].includes(payload.status) ||
+      (payload.seventhGuess !== null && !/^[A-Z]{5}$/.test(payload.seventhGuess))
     ) {
       return { ok: false, message: "Game session data is invalid." };
     }
@@ -124,8 +125,23 @@ export async function verifyGameToken(token, secret) {
       return { ok: false, message: "Game session data is invalid." };
     }
 
+    if (
+      payload.seventhGuess !== null &&
+      payload.guesses.includes(payload.seventhGuess)
+    ) {
+      return { ok: false, message: "Game session data is invalid." };
+    }
+
     const allowedClueStates = new Set(["available", "used", "skipped"]);
     if (payload.clues.some((value) => !allowedClueStates.has(value))) {
+      return { ok: false, message: "Game session data is invalid." };
+    }
+
+    if (payload.clues.filter((value) => value === "used").length !== payload.cluesUsed) {
+      return { ok: false, message: "Game session data is invalid." };
+    }
+
+    if (payload.seventhGuessUsed !== (payload.seventhGuess !== null)) {
       return { ok: false, message: "Game session data is invalid." };
     }
 
@@ -146,6 +162,7 @@ export function createFreshGameTokenPayload(puzzleId, date) {
     clues: Array(5).fill("available"),
     cluesUsed: 0,
     seventhGuessUsed: false,
+    seventhGuess: null,
     status: "playing",
     exp: Math.floor(Date.now() / 1000) + 36 * 60 * 60
   };
