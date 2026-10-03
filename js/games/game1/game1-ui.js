@@ -115,6 +115,7 @@ export async function renderGame1(container) {
   const nativeKeyboardConfirmButton = container.querySelector("#game1-native-keyboard-confirm-button");
   const mobileQuery = window.matchMedia("(max-width: 520px)");
   let nativeKeyboardMode = false;
+  let androidKeyboardAccepted = false;
   let nativeKeyboardPromptOpen = false;
   let lastBoardTapAt = 0;
   let messageTimeout = null;
@@ -278,16 +279,16 @@ export async function renderGame1(container) {
 
   function showNativeKeyboardConfirmation() {
     if (
-      nativeKeyboardMode ||
       !isMobileGameViewport() ||
       nativeKeyboardPromptOpen ||
       (state.status !== "playing" && state.status !== "awaiting-seventh")
     ) return;
 
-    // Every double-tap uses the same explicit confirmation-button path that
-    // successfully opened the native keyboard on the first activation.
-    // There is intentionally no remembered keyboard-open state or cached
-    // activation path here.
+    if (androidKeyboardAccepted) {
+      reopenAndroidKeyboard();
+      return;
+    }
+
     nativeKeyboardPromptOpen = true;
     nativeKeyboardConfirm.classList.remove("hidden");
     nativeKeyboardCancel.focus({ preventScroll: true });
@@ -300,7 +301,35 @@ export async function renderGame1(container) {
 
   function activateNativeKeyboard() {
     closeNativeKeyboardConfirmation();
+
+    // This is only an in-memory opt-in for the current FiveWink session.
+    // It records that the user already accepted Android keyboard use; it
+    // does not cache whether the Android keyboard is currently visible.
+    androidKeyboardAccepted = true;
     setNativeKeyboardMode(true);
+  }
+
+  function reopenAndroidKeyboard() {
+    if (
+      !androidKeyboardAccepted ||
+      !isMobileGameViewport() ||
+      (state.status !== "playing" && state.status !== "awaiting-seventh")
+    ) return;
+
+    if (!nativeKeyboardMode) {
+      nativeKeyboardMode = true;
+      root.classList.add("native-keyboard-mode");
+      nativeKeyboardToggle.classList.remove("hidden");
+    }
+
+    nativeKeyboardInput.disabled = false;
+    nativeKeyboardInput.readOnly = false;
+    nativeKeyboardInput.value = currentInput;
+
+    // Keep the actual keyboard-opening focus request synchronous with the
+    // user's double-tap. This is the only operation intended to reopen the
+    // Android keyboard after Back has dismissed it.
+    nativeKeyboardInput.focus({ preventScroll: true });
   }
 
   function finishGame() {
@@ -572,7 +601,7 @@ export async function renderGame1(container) {
   nativeKeyboardCancel.addEventListener("click", closeNativeKeyboardConfirmation);
   nativeKeyboardConfirmButton.addEventListener("click", activateNativeKeyboard);
 
-  board.addEventListener("pointerup", (event) => {
+  board.addEventListener("pointerdown", (event) => {
     if (!isMobileGameViewport() || !event.isPrimary || event.pointerType !== "touch") return;
     if (!event.target.closest(".letter-cell")) return;
 
@@ -580,9 +609,9 @@ export async function renderGame1(container) {
     if (now - lastBoardTapAt <= 320) {
       lastBoardTapAt = 0;
 
-      // Always use the same user-confirmation flow as the original
-      // successful activation. The confirmation button provides the trusted
-      // user gesture from which the native input is focused.
+      // When the user has already accepted Android keyboard use, reopen it
+      // directly from the real second touch. Otherwise use the existing
+      // first-time confirmation flow.
       showNativeKeyboardConfirmation();
     } else {
       lastBoardTapAt = now;
