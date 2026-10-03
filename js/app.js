@@ -10,17 +10,62 @@ const viewLinks = [...document.querySelectorAll("[data-view]")];
 const gamesView = document.querySelector("#games");
 const gameArea = document.querySelector("#game-area");
 
-function showView(viewId) {
-  document.title = "EmniFun";
+const DEFAULT_ROUTE = "home";
+const PRIMARY_ROUTES = new Set(["home", "games", "statistics", "archive", "login"]);
+const GAME_ROUTES = new Set(["games/game1"]);
+const ROUTES = new Set([...PRIMARY_ROUTES, ...GAME_ROUTES]);
 
-  if (viewId === "games" && gamesView.classList.contains("game-playing")) {
+function getRouteFromHash() {
+  const rawHash = window.location.hash.replace(/^#/, "").trim();
+  return rawHash || DEFAULT_ROUTE;
+}
+
+function normalizeRoute(route) {
+  return ROUTES.has(route) ? route : DEFAULT_ROUTE;
+}
+
+function navigateTo(route) {
+  const nextRoute = normalizeRoute(route);
+
+  if (getRouteFromHash() === nextRoute) {
+    renderRoute(nextRoute);
+    return;
+  }
+
+  window.location.hash = nextRoute;
+}
+
+function renderRoute(route) {
+  const currentRoute = normalizeRoute(route);
+  const isGame1 = currentRoute === "games/game1";
+  const viewId = isGame1 ? "games" : currentRoute;
+
+  document.title = isGame1 ? "FiveWink — EmniFun" : "EmniFun";
+
+  views.forEach((view) => {
+    view.classList.toggle("active", view.id === viewId);
+  });
+
+  navLinks.forEach((link) => {
+    link.classList.toggle("active", link.dataset.view === viewId);
+  });
+
+  if (viewId === "games") {
+    if (isGame1) {
+      gamesView.classList.add("game-playing");
+      void renderGame1(gameArea);
+    } else {
+      gamesView.classList.remove("game-playing");
+      renderGames();
+    }
+  } else if (gamesView.classList.contains("game-playing")) {
     gamesView.classList.remove("game-playing");
     renderGames();
   }
 
-  views.forEach((view) => view.classList.toggle("active", view.id === viewId));
-  navLinks.forEach((link) => link.classList.toggle("active", link.dataset.view === viewId));
-  if (viewId === "statistics") renderStatistics();
+  if (viewId === "statistics") {
+    renderStatistics();
+  }
 }
 
 function renderGames() {
@@ -32,11 +77,16 @@ function renderGames() {
     '</div>';
 
   gameArea.querySelector('[data-game="game1"]').addEventListener("click", () => {
-    gamesView.classList.add("game-playing");
-    void renderGame1(gameArea);
+    navigateTo("games/game1");
   });
-  gameArea.querySelector('[data-game="game2"]').addEventListener("click", () => renderGame2(gameArea));
-  gameArea.querySelector('[data-game="game3"]').addEventListener("click", () => renderGame3(gameArea));
+
+  gameArea.querySelector('[data-game="game2"]').addEventListener("click", () => {
+    renderGame2(gameArea);
+  });
+
+  gameArea.querySelector('[data-game="game3"]').addEventListener("click", () => {
+    renderGame3(gameArea);
+  });
 }
 
 function renderStatistics() {
@@ -56,27 +106,46 @@ function setupNavigation() {
   viewLinks.forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault();
-      showView(link.dataset.view);
+      navigateTo(link.dataset.view);
     });
   });
 
   document.querySelectorAll("[data-go-games]").forEach((button) => {
-    button.addEventListener("click", () => showView("games"));
+    button.addEventListener("click", () => navigateTo("games"));
   });
 
   gameArea.addEventListener("game1-back", () => {
-    gamesView.classList.remove("game-playing");
-    renderGames();
+    navigateTo("games");
+  });
+
+  window.addEventListener("hashchange", () => {
+    const route = getRouteFromHash();
+
+    if (!ROUTES.has(route)) {
+      navigateTo(DEFAULT_ROUTE);
+      return;
+    }
+
+    renderRoute(route);
   });
 }
 
 function initialize() {
   setupNavigation();
-  renderGames();
-  renderStatistics();
+
   document.querySelector("#login-status").textContent = isLoggedIn()
     ? "You are currently signed in."
     : "Login and registration will be connected to the backend in a future phase.";
+
+  const route = getRouteFromHash();
+
+  if (!ROUTES.has(route)) {
+    window.history.replaceState(null, "", "#home");
+    renderRoute(DEFAULT_ROUTE);
+    return;
+  }
+
+  renderRoute(route);
 }
 
 initialize();
