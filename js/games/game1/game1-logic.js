@@ -14,15 +14,16 @@ export const GAME1_RESULT = Object.freeze({
 export const GAME1_CONFIG = Object.freeze({
   normalAttempts: 6,
   clueCount: 5,
-  // TEMPORARY / CONFIGURABLE: final closeness formula is not decided yet.
-  seventhAttemptMinimumCorrectPositions: 2
+  // Configurable 7th-stage rule. The exact answer is still a failure result.
+  seventhAttemptCloseRule: "exact-answer"
 });
 
 export function createGame1State(validWords = new Set()) {
-  return {
-    attemptNumber: 1,
-    guesses: [],
-    feedback: [],
+  const state = {
+    // Authoritative regular-attempt state. Each slot is null, "clue", or "guess".
+    attempts: Array(GAME1_CONFIG.normalAttempts).fill(null),
+    guesses: Array(GAME1_CONFIG.normalAttempts).fill(null),
+    feedback: Array(GAME1_CONFIG.normalAttempts).fill(null),
     clues: Array(GAME1_CONFIG.clueCount).fill("available"),
     cluesUsed: 0,
     seventhGuessUsed: false,
@@ -31,6 +32,23 @@ export function createGame1State(validWords = new Set()) {
     answer: null,
     validWords
   };
+
+  // Derived helper for compatibility/readability. The attempts array remains
+  // the single source of truth for the active regular row.
+  Object.defineProperty(state, "attemptNumber", {
+    enumerable: true,
+    get() {
+      const nextIndex = getNextNormalAttemptIndex(this);
+      return nextIndex === -1 ? GAME1_CONFIG.normalAttempts + 1 : nextIndex + 1;
+    }
+  });
+
+  return state;
+}
+
+export function getNextNormalAttemptIndex(state) {
+  if (!state || !Array.isArray(state.attempts)) return -1;
+  return state.attempts.findIndex((slot) => slot === null);
 }
 
 export function normalizeGuess(value) {
@@ -84,28 +102,40 @@ export function evaluateGuess(guess, answer) {
 
 export function useClue(state, clueNumber) {
   if (state.status !== "playing") return { ok: false, message: "The game has ended." };
-  if (state.attemptNumber > GAME1_CONFIG.clueCount) {
-    return { ok: false, message: "Attempt 6 is guess-only." };
+
+  if (
+    !Number.isInteger(clueNumber) ||
+    clueNumber < 1 ||
+    clueNumber > GAME1_CONFIG.clueCount
+  ) {
+    return { ok: false, message: "That clue does not exist." };
   }
-  if (clueNumber !== state.attemptNumber) {
-    return { ok: false, message: "That clue is not available on this attempt." };
-  }
-  if (state.clues[clueNumber - 1] !== "available") {
+
+  const attemptIndex = clueNumber - 1;
+
+  if (state.clues[attemptIndex] !== "available") {
     return { ok: false, message: "That clue is no longer available." };
   }
 
-  state.clues[clueNumber - 1] = "used";
+  if (state.attempts[attemptIndex] !== null) {
+    return { ok: false, message: "That attempt has already been used." };
+  }
+
+  // A clue permanently consumes its associated regular attempt row.
+  state.attempts[attemptIndex] = "clue";
+  state.clues[attemptIndex] = "used";
   state.cluesUsed += 1;
-  state.attemptNumber += 1;
+
   return { ok: true };
 }
 
-function skipCurrentClue(state) {
+function skipClueForAttempt(state, attemptIndex) {
   if (
-    state.attemptNumber <= GAME1_CONFIG.clueCount &&
-    state.clues[state.attemptNumber - 1] === "available"
+    attemptIndex >= 0 &&
+    attemptIndex < GAME1_CONFIG.clueCount &&
+    state.clues[attemptIndex] === "available"
   ) {
-    state.clues[state.attemptNumber - 1] = "skipped";
+    state.clues[attemptIndex] = "skipped";
   }
 }
 
@@ -117,38 +147,60 @@ export function submitNormalGuess(state, guess, answer) {
     return { ok: false, message: "Not a valid word." };
   }
 
+  const attemptIndex = getNextNormalAttemptIndex(state);
+  if (attemptIndex === -1) {
+    return { ok: false, message: "No normal attempts remain." };
+  }
+
   const feedback = evaluateGuess(normalized, answer);
-  state.guesses.push(normalized);
-  state.feedback.push(feedback);
-  skipCurrentClue(state);
+
+  state.attempts[attemptIndex] = "guess";
+  state.guesses[attemptIndex] = normalized;
+  state.feedback[attemptIndex] = feedback;
+  skipClueForAttempt(state, attemptIndex);
 
   if (normalized === normalizeGuess(answer)) {
     state.status = "finished";
     state.result = GAME1_RESULT.SOLVED;
     state.answer = normalizeGuess(answer);
-    return { ok: true, solved: true, feedback };
+    return { ok: true, solved: true, feedback, attemptIndex };
   }
 
-  if (state.attemptNumber === GAME1_CONFIG.normalAttempts) {
+  if (getNextNormalAttemptIndex(state) === -1) {
     state.status = "awaiting-seventh";
-    return { ok: true, solved: false, feedback, seventhStage: true };
+    return { ok: true, solved: false, feedback, seventhStage: true, attemptIndex };
   }
 
-  state.attemptNumber += 1;
-  return { ok: true, solved: false, feedback };
+  return { ok: true, solved: false, feedback, attemptIndex };
 }
 
-export function evaluateSeventhAttempt(guess, answer) {
+/**
+ * The 7th-stage close rule is isolated so it can be replaced later without
+ * changing normal-attempt or UI logic.
+ *
+ * Current rule: the exact answer triggers FAILED_CLOSE.
+ * The seventh stage can never produce SOLVED.
+ */
+export function isSeventhAttemptClose(guess, answer, config = GAME1_CONFIG) {
+  const normalizedGuess = normalizeGuess(guess);
+  const normalizedAnswer = normalizeGuess(answer);
+
+  switch (config.seventhAttemptCloseRule) {
+    case "exact-answer":
+      return normalizedGuess === normalizedAnswer;
+    default:
+      return false;
+  }
+}
+
+export function evaluateSeventhAttempt(guess, answer, config = GAME1_CONFIG) {
   const feedback = evaluateGuess(guess, answer);
-  const correctPositions = feedback.filter((value) => value === "correct").length;
+  const isClose = isSeventhAttemptClose(guess, answer, config);
 
   return {
-    result:
-      correctPositions >= GAME1_CONFIG.seventhAttemptMinimumCorrectPositions
-        ? GAME1_RESULT.FAILED_CLOSE
-        : GAME1_RESULT.FAILED_HARD,
+    result: isClose ? GAME1_RESULT.FAILED_CLOSE : GAME1_RESULT.FAILED_HARD,
     feedback,
-    correctPositions
+    isClose
   };
 }
 
@@ -185,7 +237,7 @@ export function buildPlayerHistoryRecord(state, puzzle) {
     puzzleDate: puzzle.date,
     game: puzzle.game,
     result: state.result,
-    attemptsUsed: state.guesses.length,
+    attemptsUsed: state.guesses.filter(Boolean).length,
     cluesUsed: state.cluesUsed,
     seventhGuessUsed: state.seventhGuessUsed
   };
