@@ -1,6 +1,6 @@
-# Game 1 puzzle archive
+# Game 1 puzzle data
 
-This folder contains the **actual Game 1 puzzles** that you create.
+Game 1 daily answers and clues are stored separately.
 
 The answer candidate pool is stored separately in:
 
@@ -14,12 +14,67 @@ That file only says which words are eligible to become answers. It does **not** 
 puzzles/
 ├── index.json
 ├── README.md
-└── YYYY/
-    ├── YYYY-MM-DD.json
-    └── ...
+├── schedule/
+│   └── 2026.json
+└── clues/
+    └── 2026.json
 ```
 
-Every puzzle file contains one complete puzzle.
+## Answer schedule
+
+Yearly schedule files determine:
+
+`DATE → ANSWER + STATUS`
+
+Example:
+
+```json
+{
+  "game": "game1",
+  "year": 2026,
+  "puzzles": {
+    "2026-10-08": {
+      "answer": "APPLE",
+      "status": "draft"
+    }
+  }
+}
+```
+
+The schedule does not contain clue text.
+
+## Clue data
+
+Yearly clue files determine:
+
+`DATE → FIVE CLUES`
+
+Example:
+
+```json
+{
+  "game": "game1",
+  "year": 2026,
+  "puzzles": {
+    "2026-10-08": {
+      "id": "game1-2026-10-08",
+      "clues": [
+        "Clue 1",
+        "Clue 2",
+        "Clue 3",
+        "Clue 4",
+        "Clue 5"
+      ]
+    }
+  }
+}
+```
+
+The clue entry uses the same date and puzzle ID as the answer schedule.
+
+## Puzzle index
+
+`index.json` is the archive manifest. It lists the dates that exist and points to the yearly schedule and clue files.
 
 Example:
 
@@ -28,91 +83,98 @@ Example:
   "id": "game1-2026-10-08",
   "game": "game1",
   "date": "2026-10-08",
-  "answer": "APPLE",
-  "clues": [
-    "Clue 1",
-    "Clue 2",
-    "Clue 3",
-    "Clue 4",
-    "Clue 5"
-  ],
-  "status": "draft"
+  "schedulePath": "schedule/2026.json",
+  "cluePath": "clues/2026.json"
 }
 ```
+
+The index is not a second copy of the answer or clue text.
 
 ## Create a new daily puzzle
 
-Create the file under the year:
+For `2026-10-08`:
 
-`data/game1/puzzles/2026/2026-10-08.json`
+1. Add the answer and status to `schedule/2026.json`.
+2. Add exactly five clues to `clues/2026.json` under `2026-10-08`.
+3. Add the date to `index.json` with the matching schedule/clue paths.
+4. Start with `"status": "draft"`.
+5. Change the status to `"published"` only when the puzzle is ready for normal play.
 
-Then enter:
-
-- id: `game1-2026-10-08`
-- game: `game1`
-- date: `2026-10-08`
-- answer: one five-letter word from the curated answer pool
-- clues: exactly five clue strings
-- status: start with `draft`
-
-Then add this file to the small archive index:
-
-```json
-{
-  "id": "game1-2026-10-08",
-  "game": "game1",
-  "date": "2026-10-08",
-  "path": "2026/2026-10-08.json"
-}
-```
-
-The index is only a directory manifest. It is not a second copy of the puzzle answer/clues.
+The answer should exist in both vocabulary files used by Game 1.
 
 ## Statuses
 
-`draft` = being prepared
+- `draft`
+- `published`
+- `unpublished`
+- `archived`
 
-`published` = the official puzzle players can use for that date
+Status belongs to the scheduled daily puzzle, not an individual clue.
 
-`unpublished` = exists, but the public game must not use it
+Only `published` puzzles are selected for normal Game 1 play.
 
-`archived` = historical record kept permanently
+## Synchronization
 
-Only `published` can be selected by normal Game 1 play.
+The puzzle service uses the date as the synchronization key:
 
-## Changing status
-
-To publish:
-
-```json
-"status": "published"
+```
+schedule/2026.json
+        │
+        │  date = 2026-10-08
+        ├──────────────┐
+        │              │
+        ▼              ▼
+   answer/status     five clues
+        │              │
+        └──────┬───────┘
+               ▼
+       complete Game 1 puzzle
 ```
 
-To temporarily take it offline:
+Game 1 receives the same complete puzzle object it used before this storage change.
 
-```json
-"status": "unpublished"
+The UI and game logic never read schedule/clue files directly.
+
+## Validation rules
+
+A scheduled date is not usable if:
+
+- its answer is missing or malformed;
+- the answer is not in Game 1's valid vocabulary and curated answer pool;
+- its clue record is missing;
+- its clue record has the wrong puzzle ID/date;
+- it does not contain exactly five non-empty clues;
+- its date/game metadata is malformed;
+- the index creates an ambiguous duplicate date.
+
+The service fails clearly instead of silently choosing a different answer or clue set.
+
+## Static-site privacy limitation
+
+This remains a public static-site architecture. Anyone who can inspect the repository can see draft and unreleased answer/clue data.
+
+Status controls normal gameplay selection; it is not a security boundary.
+
+Before production, unreleased puzzle data should move behind a private backend/database.
+
+## Future admin
+
+The split data model is designed to support a future private workflow:
+
+```
+Create Puzzle
+    ↓
+Select date
+    ↓
+Select answer
+    ↓
+Enter 5 clues
+    ↓
+Save draft
+    ↓
+Preview
+    ↓
+Publish
 ```
 
-To keep it as historical data:
-
-```json
-"status": "archived"
-```
-
-Do not delete old puzzles just because they are no longer current.
-
-## Safety rules
-
-- Keep the id and filename date aligned.
-- Keep the date in YYYY-MM-DD.
-- Use exactly five clues.
-- Use an answer that exists in both Game 1 vocabulary files.
-- Do not create two published puzzles for the same Game 1 date.
-- If a conflict is accidentally created, the service fails clearly rather than silently selecting one.
-
-## Preview/testing
-
-The current site loads only the published puzzle for today's date. A draft can be checked by temporarily publishing it in a local/test copy, or by using the data-layer tests before committing.
-
-Remember: a public GitHub repository cannot keep draft answers secret. Status is a gameplay filter, not a security feature.
+No admin dashboard is being built as part of this change.
