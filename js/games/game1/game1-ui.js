@@ -193,7 +193,12 @@ export async function renderGame1(container) {
   }
 
   function showNativeKeyboardConfirmation() {
-    if (nativeKeyboardMode || !isMobileGameViewport() || nativeKeyboardPromptOpen) return;
+    if (
+      nativeKeyboardMode ||
+      !isMobileGameViewport() ||
+      nativeKeyboardPromptOpen ||
+      (state.status !== "playing" && state.status !== "awaiting-seventh")
+    ) return;
 
     if (hasNativeKeyboardPreference()) {
       setNativeKeyboardMode(true);
@@ -449,14 +454,20 @@ export async function renderGame1(container) {
   });
 
   nativeKeyboardInput.addEventListener("input", () => {
-    if (!nativeKeyboardMode) return;
+    if (
+      !nativeKeyboardMode ||
+      (state.status !== "playing" && state.status !== "awaiting-seventh")
+    ) return;
     currentInput = sanitizeGuessInput(nativeKeyboardInput.value);
     nativeKeyboardInput.value = currentInput;
     renderBoard();
   });
 
   nativeKeyboardInput.addEventListener("keydown", (event) => {
-    if (!nativeKeyboardMode) return;
+    if (
+      !nativeKeyboardMode ||
+      (state.status !== "playing" && state.status !== "awaiting-seventh")
+    ) return;
 
     if (event.key === "Enter") {
       event.preventDefault();
