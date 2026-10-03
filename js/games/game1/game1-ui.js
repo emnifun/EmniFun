@@ -218,7 +218,7 @@ export async function renderGame1(container) {
         return `<span class="letter-cell ${status}">${value}</span>`;
       }).join("");
 
-      return `<div class="game-row">${cells}</div>`;
+      return `<div class="game-row${isCurrent ? " active" : ""}" aria-current="${isCurrent ? "true" : "false"}">${cells}</div>`;
     }).join("");
 
     const seventh =
@@ -226,7 +226,7 @@ export async function renderGame1(container) {
         ? `
           <div class="seventh-stage">
             <div class="close-banner">You failed — but are you close?</div>
-            <div class="game-row seventh-row">
+            <div class="game-row seventh-row active">
               ${Array.from({ length: 5 }, (_, index) => {
                 const value =
                   state.guesses[GAME1_CONFIG.normalAttempts]?.[index] ||
