@@ -5,7 +5,6 @@ import {
   buildPlayerHistoryRecord,
   createGame1State,
   getNextNormalAttemptIndex,
-  isValidGuess,
   sanitizeGuessInput,
   submitNormalGuess,
   submitSeventhGuess,
@@ -77,9 +76,24 @@ export async function renderGame1(container) {
   const messageBox = container.querySelector("#game1-message");
   const resultBox = container.querySelector("#game1-result");
   const seeWhyButton = container.querySelector("#game1-see-why");
+  let messageTimeout = null;
 
-  function showMessage(message = "") {
+  function showMessage(message = "", temporary = false) {
+    if (messageTimeout) {
+      clearTimeout(messageTimeout);
+      messageTimeout = null;
+    }
+
     messageBox.textContent = message;
+    messageBox.classList.toggle("temporary", temporary);
+
+    if (temporary && message) {
+      messageTimeout = setTimeout(() => {
+        messageBox.textContent = "";
+        messageBox.classList.remove("temporary");
+        messageTimeout = null;
+      }, 1700);
+    }
   }
 
   function focusGame() {
@@ -123,12 +137,20 @@ export async function renderGame1(container) {
       return;
     }
 
-    if (!isValidGuess(currentInput, validWords)) {
-      showMessage("Not a valid word.");
+    const result = submitNormalGuess(state, currentInput, puzzle.answer);
+
+    if (!result.ok) {
+      if (result.duplicate) {
+        currentInput = "";
+        showMessage(result.message, true);
+        renderBoard();
+      } else {
+        showMessage(result.message);
+      }
+      focusGame();
       return;
     }
 
-    const result = submitNormalGuess(state, currentInput, puzzle.answer);
     currentInput = "";
     showMessage(result.seventhStage ? "You used all six normal attempts." : "");
     renderBoard();
@@ -146,18 +168,21 @@ export async function renderGame1(container) {
       return;
     }
 
-    if (!isValidGuess(currentInput, validWords)) {
-      showMessage("Not a valid word.");
-      return;
-    }
-
     const result = submitSeventhGuess(state, currentInput, puzzle.answer);
-    currentInput = "";
 
     if (!result.ok) {
-      showMessage(result.message);
+      if (result.duplicate) {
+        currentInput = "";
+        showMessage(result.message, true);
+        renderBoard();
+      } else {
+        showMessage(result.message);
+      }
+      focusGame();
       return;
     }
+
+    currentInput = "";
 
     showMessage(
       result.result === GAME1_RESULT.FAILED_CLOSE
