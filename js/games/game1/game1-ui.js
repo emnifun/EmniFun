@@ -64,29 +64,7 @@ export async function renderGame1(container) {
       <div class="game1-layout">
         <div class="game1-play-area">
           <div id="game1-board" class="game-board"></div>
-          <button class="button secondary native-keyboard-toggle hidden" id="game1-native-keyboard-toggle" type="button">Use FiveWink Keyboard</button>
-          <input
-            id="game1-native-keyboard-input"
-            class="native-keyboard-input"
-            type="text"
-            inputmode="text"
-            autocomplete="off"
-            autocapitalize="characters"
-            spellcheck="false"
-            enterkeyhint="done"
-            aria-label="FiveWink native keyboard input"
-          >
           <div id="game1-keyboard" class="keyboard" aria-label="On-screen keyboard"></div>
-        </div>
-        <div id="game1-native-keyboard-confirm" class="native-keyboard-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="game1-native-keyboard-title">
-          <div class="native-keyboard-confirm-card">
-            <h3 id="game1-native-keyboard-title">Use your phone keyboard?</h3>
-            <p>FiveWink's keyboard will be hidden and your phone keyboard will be used for typing.</p>
-            <div class="native-keyboard-confirm-actions">
-              <button class="button secondary" id="game1-native-keyboard-cancel" type="button">Cancel</button>
-              <button class="button" id="game1-native-keyboard-confirm-button" type="button">Use Phone Keyboard</button>
-            </div>
-          </div>
         </div>
         <details id="game1-clues-panel" class="game1-clues-panel">
           <summary>Clues</summary>
@@ -108,20 +86,7 @@ export async function renderGame1(container) {
   const messageBox = container.querySelector("#game1-message");
   const resultBox = container.querySelector("#game1-result");
   const seeWhyButton = container.querySelector("#game1-see-why");
-  const nativeKeyboardInput = container.querySelector("#game1-native-keyboard-input");
-  const nativeKeyboardToggle = container.querySelector("#game1-native-keyboard-toggle");
-  const nativeKeyboardConfirm = container.querySelector("#game1-native-keyboard-confirm");
-  const nativeKeyboardCancel = container.querySelector("#game1-native-keyboard-cancel");
-  const nativeKeyboardConfirmButton = container.querySelector("#game1-native-keyboard-confirm-button");
-  const mobileQuery = window.matchMedia("(max-width: 520px)");
-  let nativeKeyboardMode = false;
-  let androidKeyboardAccepted = false;
-  let nativeKeyboardPromptOpen = false;
-  let lastBoardTapAt = 0;
   let messageTimeout = null;
-  let nativeKeyboardPositionGeneration = 0;
-  let nativeKeyboardPositionTimer = null;
-  let nativeKeyboardPositionCleanup = null;
 
   function syncCluePanelForViewport() {
     cluesPanel.open = !window.matchMedia("(max-width: 800px)").matches;
@@ -131,14 +96,6 @@ export async function renderGame1(container) {
   const clueMediaQuery = window.matchMedia("(max-width: 800px)");
   const handleClueViewportChange = () => syncCluePanelForViewport();
   clueMediaQuery.addEventListener?.("change", handleClueViewportChange);
-
-  const handleNativeKeyboardViewportChange = () => {
-    if (!mobileQuery.matches) {
-      closeNativeKeyboardConfirmation();
-      if (nativeKeyboardMode) setNativeKeyboardMode(false);
-    }
-  };
-  mobileQuery.addEventListener?.("change", handleNativeKeyboardViewportChange);
 
   function showMessage(message = "", temporary = false) {
     if (messageTimeout) {
@@ -159,177 +116,7 @@ export async function renderGame1(container) {
   }
 
   function focusGame() {
-    if (nativeKeyboardMode) return;
     root.focus({ preventScroll: true });
-  }
-
-  function isMobileGameViewport() {
-    return mobileQuery.matches;
-  }
-
-  function cancelNativeKeyboardPositioning() {
-    nativeKeyboardPositionGeneration += 1;
-    if (nativeKeyboardPositionTimer !== null) {
-      clearTimeout(nativeKeyboardPositionTimer);
-      nativeKeyboardPositionTimer = null;
-    }
-    nativeKeyboardPositionCleanup?.();
-    nativeKeyboardPositionCleanup = null;
-  }
-
-  function scheduleNativeKeyboardPositioning() {
-    const generation = ++nativeKeyboardPositionGeneration;
-    let positioned = false;
-    let resizeDebounceTimer = null;
-
-    const positionOnce = () => {
-      if (
-        positioned ||
-        generation !== nativeKeyboardPositionGeneration ||
-        !nativeKeyboardMode ||
-        !isMobileGameViewport()
-      ) return;
-
-      positioned = true;
-      if (nativeKeyboardPositionTimer !== null) {
-        clearTimeout(nativeKeyboardPositionTimer);
-        nativeKeyboardPositionTimer = null;
-      }
-      if (resizeDebounceTimer !== null) {
-        clearTimeout(resizeDebounceTimer);
-        resizeDebounceTimer = null;
-      }
-      nativeKeyboardPositionCleanup?.();
-      nativeKeyboardPositionCleanup = null;
-
-      const target =
-        board.querySelector(".game-row.active") ||
-        board.querySelector(".game-row.seventh-row") ||
-        playArea;
-
-      target?.scrollIntoView({
-        block: "center",
-        inline: "nearest",
-        behavior: "auto"
-      });
-    };
-
-    const handleViewportResize = () => {
-      if (resizeDebounceTimer !== null) {
-        clearTimeout(resizeDebounceTimer);
-      }
-
-      // Wait until the mobile keyboard's viewport resize settles. This is
-      // activation-scoped only; there is no continuous scroll monitoring.
-      resizeDebounceTimer = setTimeout(() => {
-        requestAnimationFrame(positionOnce);
-      }, 120);
-    };
-
-    window.visualViewport?.addEventListener("resize", handleViewportResize);
-    nativeKeyboardPositionCleanup = () => {
-      window.visualViewport?.removeEventListener("resize", handleViewportResize);
-      if (resizeDebounceTimer !== null) {
-        clearTimeout(resizeDebounceTimer);
-        resizeDebounceTimer = null;
-      }
-    };
-
-    // Fallback for browsers that do not emit visualViewport.resize reliably.
-    nativeKeyboardPositionTimer = setTimeout(() => {
-      requestAnimationFrame(positionOnce);
-    }, 550);
-  }
-
-  function setNativeKeyboardMode(enabled) {
-    if (enabled && !isMobileGameViewport()) return;
-    if (enabled === nativeKeyboardMode) return;
-
-    if (enabled) {
-      nativeKeyboardMode = true;
-      root.classList.add("native-keyboard-mode");
-      nativeKeyboardToggle.classList.remove("hidden");
-
-      nativeKeyboardInput.disabled = false;
-      nativeKeyboardInput.readOnly = false;
-      nativeKeyboardInput.value = currentInput;
-
-      // The input remains mounted as a stable, programmatically focusable
-      // element on mobile. Do not blur/recreate it here: repeated focus on
-      // the same live input is much more reliable after a virtual keyboard
-      // has previously been dismissed.
-      scheduleNativeKeyboardPositioning();
-
-      // This must happen synchronously inside the user's activation gesture.
-      nativeKeyboardInput.focus({ preventScroll: true });
-      return;
-    }
-
-    nativeKeyboardMode = false;
-    root.classList.remove("native-keyboard-mode");
-    nativeKeyboardToggle.classList.add("hidden");
-    cancelNativeKeyboardPositioning();
-
-    // Release the native input, but do not immediately focus another element.
-    // That extra focus can interfere with the next user-initiated keyboard
-    // activation on mobile browsers.
-    nativeKeyboardInput.blur();
-    nativeKeyboardInput.value = currentInput;
-  }
-
-  function showNativeKeyboardConfirmation() {
-    if (
-      !isMobileGameViewport() ||
-      nativeKeyboardPromptOpen ||
-      (state.status !== "playing" && state.status !== "awaiting-seventh")
-    ) return;
-
-    if (androidKeyboardAccepted) {
-      reopenAndroidKeyboard();
-      return;
-    }
-
-    nativeKeyboardPromptOpen = true;
-    nativeKeyboardConfirm.classList.remove("hidden");
-    nativeKeyboardCancel.focus({ preventScroll: true });
-  }
-
-  function closeNativeKeyboardConfirmation() {
-    nativeKeyboardPromptOpen = false;
-    nativeKeyboardConfirm.classList.add("hidden");
-  }
-
-  function activateNativeKeyboard() {
-    closeNativeKeyboardConfirmation();
-
-    // This is only an in-memory opt-in for the current FiveWink session.
-    // It records that the user already accepted Android keyboard use; it
-    // does not cache whether the Android keyboard is currently visible.
-    androidKeyboardAccepted = true;
-    setNativeKeyboardMode(true);
-  }
-
-  function reopenAndroidKeyboard() {
-    if (
-      !androidKeyboardAccepted ||
-      !isMobileGameViewport() ||
-      (state.status !== "playing" && state.status !== "awaiting-seventh")
-    ) return;
-
-    if (!nativeKeyboardMode) {
-      nativeKeyboardMode = true;
-      root.classList.add("native-keyboard-mode");
-      nativeKeyboardToggle.classList.remove("hidden");
-    }
-
-    nativeKeyboardInput.disabled = false;
-    nativeKeyboardInput.readOnly = false;
-    nativeKeyboardInput.value = currentInput;
-
-    // Keep the actual keyboard-opening focus request synchronous with the
-    // user's double-tap. This is the only operation intended to reopen the
-    // Android keyboard after Back has dismissed it.
-    nativeKeyboardInput.focus({ preventScroll: true });
   }
 
   function finishGame() {
@@ -494,9 +281,6 @@ export async function renderGame1(container) {
         : "";
 
     board.innerHTML = rows + seventh;
-    if (nativeKeyboardInput.value !== currentInput) {
-      nativeKeyboardInput.value = currentInput;
-    }
     board.querySelector("#seventh-submit")?.addEventListener("click", submitSeventh);
     board.querySelector("#seventh-skip")?.addEventListener("click", skipSeventh);
   }
@@ -564,66 +348,6 @@ export async function renderGame1(container) {
     const key = event.target.closest("[data-key]")?.dataset.key;
     if (key) addInputKey(key);
     focusGame();
-  });
-
-  nativeKeyboardInput.addEventListener("input", () => {
-    if (
-      !nativeKeyboardMode ||
-      (state.status !== "playing" && state.status !== "awaiting-seventh")
-    ) return;
-    currentInput = sanitizeGuessInput(nativeKeyboardInput.value);
-    nativeKeyboardInput.value = currentInput;
-    renderBoard();
-  });
-
-  nativeKeyboardInput.addEventListener("keydown", (event) => {
-    if (
-      !nativeKeyboardMode ||
-      (state.status !== "playing" && state.status !== "awaiting-seventh")
-    ) return;
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      state.status === "playing" ? submitNormal() : submitSeventh();
-      return;
-    }
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setNativeKeyboardMode(false);
-    }
-  });
-
-  nativeKeyboardToggle.addEventListener("click", () => {
-    if (nativeKeyboardMode) setNativeKeyboardMode(false);
-  });
-
-  nativeKeyboardCancel.addEventListener("click", closeNativeKeyboardConfirmation);
-  nativeKeyboardConfirmButton.addEventListener("click", activateNativeKeyboard);
-
-  board.addEventListener("pointerdown", (event) => {
-    if (!isMobileGameViewport() || !event.isPrimary || event.pointerType !== "touch") return;
-    if (!event.target.closest(".letter-cell")) return;
-
-    const now = performance.now();
-    if (now - lastBoardTapAt <= 320) {
-      lastBoardTapAt = 0;
-
-      // Once Android keyboard use has already been accepted, this second
-      // touch must not continue through the browser's normal touch/click
-      // handling. That default action can immediately dismiss the Android
-      // keyboard that we just opened from this same gesture.
-      if (androidKeyboardAccepted) {
-        event.preventDefault();
-      }
-
-      // When the user has already accepted Android keyboard use, reopen it
-      // directly from the real second touch. Otherwise use the existing
-      // first-time confirmation flow.
-      showNativeKeyboardConfirmation();
-    } else {
-      lastBoardTapAt = now;
-    }
   });
 
   root.addEventListener("keydown", (event) => {
