@@ -609,6 +609,14 @@ export async function renderGame1(container) {
     if (now - lastBoardTapAt <= 320) {
       lastBoardTapAt = 0;
 
+      // Once Android keyboard use has already been accepted, this second
+      // touch must not continue through the browser's normal touch/click
+      // handling. That default action can immediately dismiss the Android
+      // keyboard that we just opened from this same gesture.
+      if (androidKeyboardAccepted) {
+        event.preventDefault();
+      }
+
       // When the user has already accepted Android keyboard use, reopen it
       // directly from the real second touch. Otherwise use the existing
       // first-time confirmation flow.
