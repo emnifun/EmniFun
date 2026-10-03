@@ -26,6 +26,7 @@ export function createGame1State(validWords = new Set()) {
     feedback: Array(GAME1_CONFIG.normalAttempts).fill(null),
     clues: Array(GAME1_CONFIG.clueCount).fill("available"),
     cluesUsed: 0,
+    usedGuesses: new Set(),
     seventhGuessUsed: false,
     status: "playing",
     result: null,
@@ -68,6 +69,33 @@ export function isValidGuess(guess, validWords) {
   return isEnglishFiveLetterWord(normalized) &&
     validWords instanceof Set &&
     validWords.has(normalized);
+}
+
+export function isGuessAlreadyUsed(state, guess) {
+  const normalized = normalizeGuess(guess);
+  return state?.usedGuesses instanceof Set && state.usedGuesses.has(normalized);
+}
+
+function validateNewGuess(state, guess) {
+  const normalized = normalizeGuess(guess);
+
+  if (!isEnglishFiveLetterWord(normalized)) {
+    return { ok: false, message: "Not a valid word." };
+  }
+
+  if (isGuessAlreadyUsed(state, normalized)) {
+    return {
+      ok: false,
+      duplicate: true,
+      message: "Already guessed! Try another."
+    };
+  }
+
+  if (!isValidGuess(normalized, state.validWords)) {
+    return { ok: false, message: "Not a valid word." };
+  }
+
+  return { ok: true, word: normalized };
 }
 
 /**
@@ -142,11 +170,12 @@ function skipClueForAttempt(state, attemptIndex) {
 export function submitNormalGuess(state, guess, answer) {
   if (state.status !== "playing") return { ok: false, message: "The game has ended." };
 
-  const normalized = normalizeGuess(guess);
-  if (!isValidGuess(normalized, state.validWords)) {
-    return { ok: false, message: "Not a valid word." };
+  const validation = validateNewGuess(state, guess);
+  if (!validation.ok) {
+    return validation;
   }
 
+  const normalized = validation.word;
   const attemptIndex = getNextNormalAttemptIndex(state);
   if (attemptIndex === -1) {
     return { ok: false, message: "No normal attempts remain." };
@@ -154,6 +183,7 @@ export function submitNormalGuess(state, guess, answer) {
 
   const feedback = evaluateGuess(normalized, answer);
 
+  state.usedGuesses.add(normalized);
   state.attempts[attemptIndex] = "guess";
   state.guesses[attemptIndex] = normalized;
   state.feedback[attemptIndex] = feedback;
@@ -216,12 +246,14 @@ export function submitSeventhGuess(state, guess, answer) {
     return { ok: false, message: "The seventh attempt is not available." };
   }
 
-  const normalized = normalizeGuess(guess);
-  if (!isValidGuess(normalized, state.validWords)) {
-    return { ok: false, message: "Not a valid word." };
+  const validation = validateNewGuess(state, guess);
+  if (!validation.ok) {
+    return validation;
   }
 
+  const normalized = validation.word;
   const evaluation = evaluateSeventhAttempt(normalized, answer);
+  state.usedGuesses.add(normalized);
   state.status = "finished";
   state.result = evaluation.result;
   state.answer = normalizeGuess(answer);
