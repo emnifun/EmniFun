@@ -38,96 +38,145 @@ These are only eligible answer words. They are **not** the daily schedule, and t
 
 Every answer candidate should also exist in `valid-guesses.json`.
 
-## Puzzle archive
+## Puzzle data
+
+Game 1 daily puzzle data is separated into three layers:
+
+1. **Answer schedule** — chooses the answer and status for each date.
+2. **Clue data** — stores the five clues for each date.
+3. **Puzzle index** — lists which Game 1 dates exist and points to the yearly schedule/clue files.
 
 Folder:
 
 `data/game1/puzzles/`
 
-Each actual puzzle is stored in its own date-based file:
+Structure:
 
 ```
-data/
-└── game1/
-    ├── vocabulary/
-    │   ├── valid-guesses.json
-    │   └── answers.json
-    │
-    └── puzzles/
-        ├── index.json
-        ├── README.md
-        └── 2026/
-            ├── 2026-10-02.json
-            ├── 2026-10-03.json
-            └── ...
+puzzles/
+├── index.json
+├── README.md
+├── schedule/
+│   └── 2026.json
+└── clues/
+    └── 2026.json
 ```
 
-The archive index only tells the service which date files exist. The complete puzzle content stays in the date file itself.
+### Daily answer schedule
 
-## Puzzle record
+File:
 
-A puzzle file looks like this:
+`data/game1/puzzles/schedule/2026.json`
+
+The schedule is the source of truth for:
+
+`DATE → ANSWER + STATUS`
+
+Example:
 
 ```json
 {
-  "id": "game1-2026-10-04",
   "game": "game1",
-  "date": "2026-10-04",
-  "answer": "TRAIN",
-  "clues": [
-    "It travels on tracks.",
-    "It carries passengers or goods.",
-    "It often has many carriages.",
-    "It stops at stations.",
-    "It has five letters."
-  ],
-  "status": "draft"
+  "year": 2026,
+  "puzzles": {
+    "2026-10-03": {
+      "answer": "HOUSE",
+      "status": "published"
+    }
+  }
 }
 ```
 
-Dates always use **YYYY-MM-DD**.
+Do not copy daily clues into the schedule.
+
+### Daily clue data
+
+File:
+
+`data/game1/puzzles/clues/2026.json`
+
+The clue data is the source of truth for:
+
+`DATE → FIVE CLUES`
+
+Each clue record uses the same date and Game 1 puzzle ID so the two data layers cannot be silently mixed.
+
+Example:
+
+```json
+{
+  "game": "game1",
+  "year": 2026,
+  "puzzles": {
+    "2026-10-03": {
+      "id": "game1-2026-10-03",
+      "clues": [
+        "People live in it.",
+        "It has rooms.",
+        "It usually has a door.",
+        "It can have a roof.",
+        "It is a place to live."
+      ]
+    }
+  }
+}
+```
+
+### Puzzle service synchronization
+
+The Game 1 UI and logic do not read either file directly.
+
+The puzzle service uses the **date** as the synchronization key, loads the matching schedule and clue records, validates them, and creates the same effective puzzle object Game 1 already expects:
+
+```json
+{
+  "id": "game1-2026-10-03",
+  "game": "game1",
+  "date": "2026-10-03",
+  "answer": "HOUSE",
+  "clues": ["...", "...", "...", "...", "..."],
+  "status": "published"
+}
+```
+
+The game therefore remains independent from the storage layout.
+
+### Creating a new daily puzzle
+
+For a future date such as `2026-10-08`:
+
+1. Add the answer and status to `schedule/2026.json`.
+2. Add the five clues to `clues/2026.json` under the same date.
+3. Add the date to `index.json` with the matching yearly schedule/clue paths.
+4. Use `draft` until the puzzle is ready.
+5. Change the schedule status to `published` when it should become playable.
+
+You do **not** copy the answer into the clue data.
+
+You do **not** need to edit Game 1 UI or Game 1 logic.
+
+### Statuses
 
 Supported statuses are:
 
 - `draft` — being prepared; never selected for normal play.
 - `published` — the official puzzle for that date.
 - `unpublished` — intentionally unavailable for normal play.
-- `archived` — historical puzzle; kept permanently but not playable as the active daily puzzle.
+- `archived` — historical puzzle; kept but not playable.
 
-For one date, the service allows zero or one published puzzle. If two published records are present for the same Game 1 date, the service throws a clear data error instead of choosing one.
+Status belongs to the daily scheduled puzzle and is stored with the answer schedule, not separately on individual clues.
 
-## Today's puzzle
+### Migration rule
 
-Game 1 asks the puzzle service for the current date.
+Existing daily answers and clues must remain unchanged when moving between the old combined date files and the new split schedule/clue structure.
 
-The UI does not contain answers such as APPLE, HOUSE, or TRAIN.
+The answer candidate pool remains in:
 
-The service:
+`data/game1/vocabulary/answers.json`
 
-1. resolves today's date as YYYY-MM-DD;
-2. checks the puzzle archive index for that date;
-3. loads the matching date file(s);
-4. validates each record;
-5. selects the single published Game 1 puzzle.
+The guess vocabulary remains in:
 
-If no puzzle exists or none is published, the game shows an unavailable state. It does not use yesterday's puzzle, tomorrow's puzzle, a fallback answer, or an invented puzzle.
-
-## Manual workflow
-
-To create tomorrow's puzzle:
-
-1. Create the date file, for example:
-   `data/game1/puzzles/2026/2026-10-04.json`
-2. Put in the id, game, date, answer, five clues, and `"status": "draft"`.
-3. Make sure the answer exists in both `answers.json` and `valid-guesses.json`.
-4. Add the matching file entry to `data/game1/puzzles/index.json`.
-5. Preview/test the puzzle.
-6. Change only the puzzle's status to `"published"` when it is ready.
-7. Commit and push the change.
-
-You do **not** need to edit Game 1 UI or Game 1 logic to create a daily puzzle.
-
-To take a puzzle offline, change `published` to `unpublished`. To retain it as history, use `archived`.
+`data/game1/vocabulary/valid-guesses.json`
 
 ## Static-site privacy limitation
 
