@@ -18,7 +18,7 @@ function getAudioContext() {
 
   audioContext = new AudioContextCtor();
   masterGain = audioContext.createGain();
-  masterGain.gain.value = 0.08;
+  masterGain.gain.value = 0.11;
   masterGain.connect(audioContext.destination);
 
   return audioContext;
