@@ -70,39 +70,50 @@ const validWords = new Set([
 
 {
   const state = createGame1State(validWords);
+  assert(!useClue(state, 2).ok, "Clue 2 must not be available on Attempt 1.");
+  assert(!useClue(state, 3).ok, "Clue 3 must not be available on Attempt 1.");
+  assert(!useClue(state, 4).ok, "Clue 4 must not be available on Attempt 1.");
+  assert(!useClue(state, 5).ok, "Clue 5 must not be available on Attempt 1.");
+  assert(useClue(state, 1).ok, "Only Clue 1 must be usable on Attempt 1.");
+  assert(state.attempts[0] === "clue", "Clue 1 must consume Attempt 1.");
+  assert(state.attemptNumber === 2, "Clue 1 must advance to Attempt 2.");
+}
+
+{
+  const state = createGame1State(validWords);
   submitNormalGuess(state, "APPLE", "HOUSE");
-  assert(useClue(state, 3).ok, "Clue 3 must be usable after Row 1 is guessed.");
-  assert(getNextNormalAttemptIndex(state) === 1, "After Row 1 guess + Clue 3, Row 2 must be next.");
-  const second = submitNormalGuess(state, "CHAIR", "HOUSE");
-  assert(second.attemptIndex === 1, "The next submitted guess must be stored on Row 2.");
-  assert(state.guesses[2] === null, "Row 3 must remain unavailable for guesses after Clue 3.");
+  assert(state.attemptNumber === 2, "After guessing Attempt 1, Attempt 2 must become active.");
+
+  assert(!useClue(state, 1).ok, "Clue 1 must not become available again.");
+  assert(!useClue(state, 3).ok, "Clue 3 must not be available on Attempt 2.");
+  assert(!useClue(state, 4).ok, "Clue 4 must not be available on Attempt 2.");
+  assert(!useClue(state, 5).ok, "Clue 5 must not be available on Attempt 2.");
+  assert(useClue(state, 2).ok, "Only Clue 2 must be usable on Attempt 2.");
+  assert(state.attemptNumber === 3, "Clue 2 must advance to Attempt 3.");
 }
 
 {
   const state = createGame1State(validWords);
-  assert(useClue(state, 1).ok, "Clue 1 must consume Row 1.");
-  assert(getNextNormalAttemptIndex(state) === 1, "After Clue 1, Row 2 must be next.");
-  const second = submitNormalGuess(state, "APPLE", "HOUSE");
-  assert(second.attemptIndex === 1, "After Clue 1, the next guess must use Row 2.");
+  assert(useClue(state, 1).ok, "Clue 1 must be usable on Attempt 1.");
+  assert(!useClue(state, 3).ok, "Clue 3 must not be available on Attempt 2.");
+  assert(useClue(state, 2).ok, "Clue 2 must be usable on Attempt 2.");
+  assert(useClue(state, 3).ok, "Clue 3 must be usable on Attempt 3.");
+  assert(useClue(state, 4).ok, "Clue 4 must be usable on Attempt 4.");
+  assert(useClue(state, 5).ok, "Clue 5 must be usable on Attempt 5.");
+  assert(state.attemptNumber === 6, "Using Clues 1–5 must leave Attempt 6 active.");
+  assert(!useClue(state, 1).ok, "Previously used Clue 1 must stay unavailable.");
+  assert(!useClue(state, 5).ok, "Previously used Clue 5 must stay unavailable.");
 }
 
 {
   const state = createGame1State(validWords);
+  assert(!useClue(state, 2).ok, "Future Clue 2 must be locked on Attempt 1.");
+  assert(!useClue(state, 4).ok, "Future Clue 4 must be locked on Attempt 1.");
   assert(useClue(state, 1).ok, "Clue 1 must be usable.");
-  assert(useClue(state, 2).ok, "Clue 2 must be usable.");
-  assert(getNextNormalAttemptIndex(state) === 2, "After Clues 1 and 2, Row 3 must be next.");
-  const third = submitNormalGuess(state, "CHAIR", "HOUSE");
-  assert(third.attemptIndex === 2, "Guess after Clues 1 and 2 must use Row 3.");
-}
-
-{
-  const state = createGame1State(validWords);
-  assert(useClue(state, 2).ok, "Clue 2 must be usable out of order.");
-  assert(useClue(state, 4).ok, "Clue 4 must be usable out of order.");
-  assert(getNextNormalAttemptIndex(state) === 0, "After Clues 2 and 4, Row 1 must be next.");
-  const first = submitNormalGuess(state, "APPLE", "HOUSE");
-  assert(first.attemptIndex === 0, "Guess after out-of-order clues must use Row 1.");
-  assert(state.guesses[1] === null && state.guesses[3] === null, "Clue-consumed rows must never receive guesses.");
+  submitNormalGuess(state, "APPLE", "HOUSE");
+  assert(state.attemptNumber === 3, "Clue 1 plus Attempt 2 guess must move to Attempt 3.");
+  assert(!useClue(state, 5).ok, "Future Clue 5 must remain locked on Attempt 3.");
+  assert(useClue(state, 3).ok, "Clue 3 must be usable on Attempt 3.");
 }
 
 
