@@ -5,6 +5,7 @@ import {
   GAME1_CONFIG,
   GAME1_RESULT,
   createGame1State,
+  getNextNormalAttemptIndex,
   isGuessAlreadyUsed,
   evaluateGuess,
   evaluateSeventhAttempt,
