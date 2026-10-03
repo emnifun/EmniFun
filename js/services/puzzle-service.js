@@ -19,8 +19,8 @@ export const PUZZLE_STATUS = Object.freeze({
 });
 
 const VALID_PUZZLE_STATUSES = new Set(Object.values(PUZZLE_STATUS));
-const SCHEDULE_PATH_PATTERN = /^schedule\/\d{4}\.json$/;
-const CLUE_PATH_PATTERN = /^clues\/\d{4}\.json$/;
+const DAILY_WORD_PATH_PATTERN = /^words/\d{4}/\d{4}-\d{2}-\d{2}\.json$/;
+const DAILY_CLUE_PATH_PATTERN = /^clues/\d{4}/\d{4}-\d{2}-\d{2}\.json$/;
 
 let game1DataPromise = null;
 
@@ -66,56 +66,60 @@ function validatePuzzleIndex(index) {
   const seenDates = new Set();
   const seenIds = new Set();
 
+  const puzzles = index.puzzles.map((entry) => {
+    if (!entry || typeof entry !== "object") {
+      throw new PuzzleDataError("The Game 1 puzzle index contains an invalid entry.");
+    }
+
+    if (entry.game !== "game1") {
+      throw new PuzzleDataError("A Game 1 puzzle index entry has an invalid game identifier.");
+    }
+
+    const date = normalizePuzzleDate(entry.date);
+    const expectedId = "game1-" + date;
+    const year = date.slice(0, 4);
+
+    if (entry.id !== expectedId) {
+      throw new PuzzleDataError("Puzzle index id must match game1-YYYY-MM-DD.");
+    }
+
+    if (seenDates.has(date) || seenIds.has(entry.id)) {
+      throw new PuzzleDataError(
+        "The Game 1 puzzle index contains an ambiguous duplicate date or id: " + date + "."
+      );
+    }
+
+    if (
+      typeof entry.wordPath !== "string" ||
+      !DAILY_WORD_PATH_PATTERN.test(entry.wordPath) ||
+      entry.wordPath !== "words/" + year + "/" + date + ".json"
+    ) {
+      throw new PuzzleDataError("Puzzle index wordPath must match words/YYYY/YYYY-MM-DD.json.");
+    }
+
+    if (
+      typeof entry.cluePath !== "string" ||
+      !DAILY_CLUE_PATH_PATTERN.test(entry.cluePath) ||
+      entry.cluePath !== "clues/" + year + "/" + date + ".json"
+    ) {
+      throw new PuzzleDataError("Puzzle index cluePath must match clues/YYYY/YYYY-MM-DD.json.");
+    }
+
+    seenDates.add(date);
+    seenIds.add(entry.id);
+
+    return {
+      id: entry.id,
+      game: entry.game,
+      date,
+      wordPath: entry.wordPath,
+      cluePath: entry.cluePath
+    };
+  });
+
   return {
     ...index,
-    puzzles: index.puzzles.map((entry) => {
-      if (!entry || typeof entry !== "object") {
-        throw new PuzzleDataError("The Game 1 puzzle index contains an invalid entry.");
-      }
-
-      if (entry.game !== "game1") {
-        throw new PuzzleDataError("A Game 1 puzzle index entry has an invalid game identifier.");
-      }
-
-      const date = normalizePuzzleDate(entry.date);
-      const expectedId = "game1-" + date;
-      const year = date.slice(0, 4);
-
-      if (entry.id !== expectedId) {
-        throw new PuzzleDataError("Puzzle index id must match game1-YYYY-MM-DD.");
-      }
-
-      if (seenDates.has(date) || seenIds.has(entry.id)) {
-        throw new PuzzleDataError("The Game 1 puzzle index contains an ambiguous duplicate date or id: " + date + ".");
-      }
-
-      if (typeof entry.schedulePath !== "string" || !SCHEDULE_PATH_PATTERN.test(entry.schedulePath)) {
-        throw new PuzzleDataError("Puzzle index schedule paths must use schedule/YYYY.json.");
-      }
-
-      if (entry.schedulePath !== "schedule/" + year + ".json") {
-        throw new PuzzleDataError("Puzzle index schedule path does not match its date.");
-      }
-
-      if (typeof entry.cluePath !== "string" || !CLUE_PATH_PATTERN.test(entry.cluePath)) {
-        throw new PuzzleDataError("Puzzle index clue paths must use clues/YYYY.json.");
-      }
-
-      if (entry.cluePath !== "clues/" + year + ".json") {
-        throw new PuzzleDataError("Puzzle index clue path does not match its date.");
-      }
-
-      seenDates.add(date);
-      seenIds.add(entry.id);
-
-      return {
-        id: entry.id,
-        game: entry.game,
-        date,
-        schedulePath: entry.schedulePath,
-        cluePath: entry.cluePath
-      };
-    })
+    puzzles
   };
 }
 
@@ -129,6 +133,7 @@ export async function loadGame1Data() {
       if (!Array.isArray(validGuessData.words)) {
         throw new PuzzleDataError("valid-guesses.json must contain a words array.");
       }
+
       if (!Array.isArray(answerData.words)) {
         throw new PuzzleDataError("answers.json must contain a words array.");
       }
@@ -154,145 +159,12 @@ export async function loadGame1Data() {
       };
     });
 
-    // Allow a later retry if local data failed to load.
     game1DataPromise.catch(() => {
       game1DataPromise = null;
     });
   }
 
   return game1DataPromise;
-}
-
-export function validateScheduleData(scheduleData, year) {
-  if (!scheduleData || typeof scheduleData !== "object") {
-    throw new PuzzleDataError("The Game 1 answer schedule is invalid.");
-  }
-
-  const normalizedYear = String(year);
-  if (scheduleData.game !== "game1" || String(scheduleData.year) !== normalizedYear) {
-    throw new PuzzleDataError("The Game 1 answer schedule has the wrong game or year.");
-  }
-
-  if (!scheduleData.puzzles || typeof scheduleData.puzzles !== "object" || Array.isArray(scheduleData.puzzles)) {
-    throw new PuzzleDataError("The Game 1 answer schedule must contain a puzzles object.");
-  }
-
-  const puzzles = {};
-  for (const [dateKey, entry] of Object.entries(scheduleData.puzzles)) {
-    const date = normalizePuzzleDate(dateKey);
-    if (date.slice(0, 4) !== normalizedYear) {
-      throw new PuzzleDataError("Answer schedule date does not match its year: " + date + ".");
-    }
-
-    if (!entry || typeof entry !== "object") {
-      throw new PuzzleDataError("Answer schedule entry is invalid for " + date + ".");
-    }
-
-    const answer = String(entry.answer ?? "").trim().toUpperCase();
-    if (!/^[A-Z]{5}$/.test(answer)) {
-      throw new PuzzleDataError("Scheduled answer for " + date + " is not a valid five-letter word.");
-    }
-
-    if (!VALID_PUZZLE_STATUSES.has(entry.status)) {
-      throw new PuzzleDataError("Scheduled puzzle for " + date + " has an invalid status.");
-    }
-
-    puzzles[date] = {
-      answer,
-      status: entry.status
-    };
-  }
-
-  return { ...scheduleData, year: Number(normalizedYear), puzzles };
-}
-
-export function validateClueData(clueData, year) {
-  if (!clueData || typeof clueData !== "object") {
-    throw new PuzzleDataError("The Game 1 clue data is invalid.");
-  }
-
-  const normalizedYear = String(year);
-  if (clueData.game !== "game1" || String(clueData.year) !== normalizedYear) {
-    throw new PuzzleDataError("The Game 1 clue data has the wrong game or year.");
-  }
-
-  if (!clueData.puzzles || typeof clueData.puzzles !== "object" || Array.isArray(clueData.puzzles)) {
-    throw new PuzzleDataError("The Game 1 clue data must contain a puzzles object.");
-  }
-
-  const puzzles = {};
-  for (const [dateKey, entry] of Object.entries(clueData.puzzles)) {
-    const date = normalizePuzzleDate(dateKey);
-    if (date.slice(0, 4) !== normalizedYear) {
-      throw new PuzzleDataError("Clue data date does not match its year: " + date + ".");
-    }
-
-    if (!entry || typeof entry !== "object") {
-      throw new PuzzleDataError("Clue data entry is invalid for " + date + ".");
-    }
-
-    const expectedId = "game1-" + date;
-    if (entry.id !== expectedId) {
-      throw new PuzzleDataError("Clue data id does not match its date: " + date + ".");
-    }
-
-    if (!Array.isArray(entry.clues) || entry.clues.length !== 5) {
-      throw new PuzzleDataError("Clue data for " + date + " must contain exactly five clues.");
-    }
-
-    if (entry.clues.some((clue) => typeof clue !== "string" || !clue.trim())) {
-      throw new PuzzleDataError("Clue data for " + date + " contains an empty or invalid clue.");
-    }
-
-    puzzles[date] = {
-      id: expectedId,
-      clues: entry.clues.map((clue) => clue.trim())
-    };
-  }
-
-  return { ...clueData, year: Number(normalizedYear), puzzles };
-}
-
-export function combinePuzzleData(date, scheduleEntry, clueEntry, validWords, answerWords) {
-  const targetDate = normalizePuzzleDate(date);
-
-  if (!scheduleEntry || typeof scheduleEntry !== "object") {
-    throw new PuzzleDataError("Scheduled answer is missing for " + targetDate + ".");
-  }
-
-  const answer = String(scheduleEntry.answer ?? "").trim().toUpperCase();
-  if (!answer) {
-    throw new PuzzleDataError("Scheduled answer is missing for " + targetDate + ".");
-  }
-
-  if (!VALID_PUZZLE_STATUSES.has(scheduleEntry.status)) {
-    throw new PuzzleDataError("Scheduled puzzle for " + targetDate + " has an invalid status.");
-  }
-
-  if (!clueEntry || typeof clueEntry !== "object") {
-    throw new PuzzleDataError("Clue data is missing for " + targetDate + ".");
-  }
-
-  if (clueEntry.id !== "game1-" + targetDate) {
-    throw new PuzzleDataError("Clue data is attached to the wrong puzzle date: " + targetDate + ".");
-  }
-
-  if (!Array.isArray(clueEntry.clues) || clueEntry.clues.length !== 5) {
-    throw new PuzzleDataError("Clue data for " + targetDate + " must contain exactly five clues.");
-  }
-
-  return validatePuzzleRecord(
-    {
-      id: "game1-" + targetDate,
-      game: "game1",
-      date: targetDate,
-      answer,
-      clues: clueEntry.clues,
-      status: scheduleEntry.status
-    },
-    validWords,
-    answerWords
-  );
 }
 
 export function normalizePuzzleDate(value) {
@@ -334,9 +206,13 @@ function validateDateParts(year, monthText, dayText) {
     throw new PuzzleDataError("Puzzle date is not a valid calendar date.");
   }
 
-  return String(year).padStart(4, "0") + "-" +
-    String(month).padStart(2, "0") + "-" +
-    String(day).padStart(2, "0");
+  return (
+    String(year).padStart(4, "0") +
+    "-" +
+    String(month).padStart(2, "0") +
+    "-" +
+    String(day).padStart(2, "0")
+  );
 }
 
 export function getTodayDateString() {
@@ -362,81 +238,134 @@ export function findPublishedPuzzle(puzzles, date, gameId = "game1") {
   return published[0] || null;
 }
 
-export function validatePuzzleRecord(puzzle, validWords, answerWords, expectedEntry = null) {
-  if (!puzzle || typeof puzzle !== "object") {
-    throw new PuzzleDataError("The selected puzzle record is invalid.");
+export function validateDailyWordRecord(wordRecord, validWords, answerWords, expectedEntry = null) {
+  if (!wordRecord || typeof wordRecord !== "object") {
+    throw new PuzzleDataError("The daily Game 1 word record is invalid.");
   }
 
-  if (puzzle.game !== "game1") {
-    throw new PuzzleDataError("The selected puzzle is not a Game 1 puzzle.");
+  if (wordRecord.game !== "game1") {
+    throw new PuzzleDataError("The daily Game 1 word record has an invalid game identifier.");
   }
 
-  const date = normalizePuzzleDate(puzzle.date);
+  const date = normalizePuzzleDate(wordRecord.date);
   const expectedId = "game1-" + date;
 
-  if (puzzle.id !== expectedId) {
-    throw new PuzzleDataError("Puzzle id must match game1-YYYY-MM-DD.");
-  }
-
-  if (!VALID_PUZZLE_STATUSES.has(puzzle.status)) {
-    throw new PuzzleDataError("The selected puzzle has an unrecognized status.");
+  if (wordRecord.id !== expectedId) {
+    throw new PuzzleDataError("Daily word record id must match game1-YYYY-MM-DD.");
   }
 
   if (expectedEntry) {
-    if (puzzle.id !== expectedEntry.id || date !== expectedEntry.date) {
-      throw new PuzzleDataError("Puzzle record does not match its archive index entry.");
+    if (date !== expectedEntry.date || wordRecord.id !== expectedEntry.id) {
+      throw new PuzzleDataError("Daily word record does not match its puzzle index entry.");
     }
   }
 
-  if (!/^[A-Z]{5}$/.test(String(puzzle.answer ?? "").trim().toUpperCase())) {
-    throw new PuzzleDataError("The selected puzzle has an invalid five-letter answer.");
+  if (!VALID_PUZZLE_STATUSES.has(wordRecord.status)) {
+    throw new PuzzleDataError("Daily word record has an unrecognized status.");
   }
 
-  const answer = String(puzzle.answer).trim().toUpperCase();
+  const answer = String(wordRecord.answer ?? "").trim().toUpperCase();
+
+  if (!/^[A-Z]{5}$/.test(answer)) {
+    throw new PuzzleDataError("Daily word record answer must be a five-letter word.");
+  }
 
   if (!(validWords instanceof Set) || !validWords.has(answer)) {
-    throw new PuzzleDataError("The puzzle answer is not in valid-guesses.json.");
+    throw new PuzzleDataError("The daily answer is not in valid-guesses.json.");
   }
 
   if (!(answerWords instanceof Set) || !answerWords.has(answer)) {
-    throw new PuzzleDataError("The puzzle answer is not in answers.json.");
-  }
-
-  if (!Array.isArray(puzzle.clues) || puzzle.clues.length !== 5) {
-    throw new PuzzleDataError("The selected puzzle must contain exactly five clues.");
-  }
-
-  if (puzzle.clues.some((clue) => typeof clue !== "string" || !clue.trim())) {
-    throw new PuzzleDataError("The selected puzzle contains an empty or invalid clue.");
+    throw new PuzzleDataError("The daily answer is not in answers.json.");
   }
 
   return {
-    ...puzzle,
+    id: wordRecord.id,
+    game: "game1",
     date,
     answer,
-    clues: puzzle.clues.map((clue) => clue.trim())
+    status: wordRecord.status
+  };
+}
+
+export function validateDailyClueRecord(clueRecord, expectedEntry = null) {
+  if (!clueRecord || typeof clueRecord !== "object") {
+    throw new PuzzleDataError("The daily Game 1 clue record is invalid.");
+  }
+
+  if (clueRecord.game !== "game1") {
+    throw new PuzzleDataError("The daily Game 1 clue record has an invalid game identifier.");
+  }
+
+  const date = normalizePuzzleDate(clueRecord.date);
+  const expectedId = "game1-" + date;
+
+  if (clueRecord.id !== expectedId) {
+    throw new PuzzleDataError("Daily clue record id must match game1-YYYY-MM-DD.");
+  }
+
+  if (expectedEntry) {
+    if (date !== expectedEntry.date || clueRecord.id !== expectedEntry.id) {
+      throw new PuzzleDataError("Daily clue record does not match its puzzle index entry.");
+    }
+  }
+
+  if (!Array.isArray(clueRecord.clues) || clueRecord.clues.length !== 5) {
+    throw new PuzzleDataError("Daily clue record must contain exactly five clues.");
+  }
+
+  if (clueRecord.clues.some((clue) => typeof clue !== "string" || !clue.trim())) {
+    throw new PuzzleDataError("Daily clue record contains an empty or invalid clue.");
+  }
+
+  return {
+    id: clueRecord.id,
+    game: "game1",
+    date,
+    clues: clueRecord.clues.map((clue) => clue.trim())
+  };
+}
+
+/**
+ * Combine one daily word file and one daily clue file into the stable puzzle
+ * object consumed by Game 1.
+ */
+export function combinePuzzleData(date, wordRecord, clueRecord, validWords, answerWords) {
+  const targetDate = normalizePuzzleDate(date);
+
+  const word = validateDailyWordRecord(wordRecord, validWords, answerWords);
+  const clues = validateDailyClueRecord(clueRecord);
+
+  if (word.date !== targetDate || clues.date !== targetDate) {
+    throw new PuzzleDataError("Daily word and clue data do not match " + targetDate + ".");
+  }
+
+  if (word.id !== clues.id || word.id !== "game1-" + targetDate) {
+    throw new PuzzleDataError("Daily word and clue data do not match the same Game 1 puzzle.");
+  }
+
+  return {
+    id: "game1-" + targetDate,
+    game: "game1",
+    date: targetDate,
+    answer: word.answer,
+    clues: clues.clues,
+    status: word.status
   };
 }
 
 async function loadPuzzleFromIndexEntry(entry, data) {
-  const scheduleUrl = new URL(entry.schedulePath, PUZZLE_DATA_URL);
+  const wordUrl = new URL(entry.wordPath, PUZZLE_DATA_URL);
   const clueUrl = new URL(entry.cluePath, PUZZLE_DATA_URL);
 
-  const [scheduleDataRaw, clueDataRaw] = await Promise.all([
-    fetchJson(scheduleUrl, "answer schedule " + entry.schedulePath),
-    fetchJson(clueUrl, "clue data " + entry.cluePath)
+  const [wordRecord, clueRecord] = await Promise.all([
+    fetchJson(wordUrl, "word data " + entry.date),
+    fetchJson(clueUrl, "clue data " + entry.date)
   ]);
-
-  const year = entry.date.slice(0, 4);
-  const scheduleData = validateScheduleData(scheduleDataRaw, year);
-  const clueData = validateClueData(clueDataRaw, year);
-  const scheduleEntry = scheduleData.puzzles[entry.date];
-  const clueEntry = clueData.puzzles[entry.date];
 
   return combinePuzzleData(
     entry.date,
-    scheduleEntry,
-    clueEntry,
+    validateDailyWordRecord(wordRecord, data.validWords, data.answerWords, entry),
+    validateDailyClueRecord(clueRecord, entry),
     data.validWords,
     data.answerWords
   );
@@ -455,7 +384,9 @@ export async function getPublishedPuzzleForDate(date) {
   }
 
   if (entries.length > 1) {
-    throw new PuzzleDataError("Multiple Game 1 puzzle index entries exist for " + targetDate + ".");
+    throw new PuzzleDataError(
+      "Multiple Game 1 puzzle index entries exist for " + targetDate + "."
+    );
   }
 
   const puzzle = await loadPuzzleFromIndexEntry(entries[0], data);
