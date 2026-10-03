@@ -64,7 +64,29 @@ export async function renderGame1(container) {
       <div class="game1-layout">
         <div class="game1-play-area">
           <div id="game1-board" class="game-board"></div>
+          <button class="button secondary native-keyboard-toggle hidden" id="game1-native-keyboard-toggle" type="button">Use FiveWink Keyboard</button>
+          <input
+            id="game1-native-keyboard-input"
+            class="native-keyboard-input"
+            type="text"
+            inputmode="text"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            enterkeyhint="done"
+            aria-label="FiveWink native keyboard input"
+          >
           <div id="game1-keyboard" class="keyboard" aria-label="On-screen keyboard"></div>
+        </div>
+        <div id="game1-native-keyboard-confirm" class="native-keyboard-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="game1-native-keyboard-title">
+          <div class="native-keyboard-confirm-card">
+            <h3 id="game1-native-keyboard-title">Use your phone keyboard?</h3>
+            <p>FiveWink's keyboard will be hidden and your phone keyboard will be used for typing.</p>
+            <div class="native-keyboard-confirm-actions">
+              <button class="button secondary" id="game1-native-keyboard-cancel" type="button">Cancel</button>
+              <button class="button" id="game1-native-keyboard-confirm-button" type="button">Use Phone Keyboard</button>
+            </div>
+          </div>
         </div>
         <details id="game1-clues-panel" class="game1-clues-panel">
           <summary>Clues</summary>
@@ -86,6 +108,16 @@ export async function renderGame1(container) {
   const messageBox = container.querySelector("#game1-message");
   const resultBox = container.querySelector("#game1-result");
   const seeWhyButton = container.querySelector("#game1-see-why");
+  const nativeKeyboardInput = container.querySelector("#game1-native-keyboard-input");
+  const nativeKeyboardToggle = container.querySelector("#game1-native-keyboard-toggle");
+  const nativeKeyboardConfirm = container.querySelector("#game1-native-keyboard-confirm");
+  const nativeKeyboardCancel = container.querySelector("#game1-native-keyboard-cancel");
+  const nativeKeyboardConfirmButton = container.querySelector("#game1-native-keyboard-confirm-button");
+  const mobileQuery = window.matchMedia("(max-width: 520px)");
+  const nativeKeyboardPreferenceKey = "fivewink.nativeKeyboardPreference";
+  let nativeKeyboardMode = false;
+  let nativeKeyboardPromptOpen = false;
+  let lastBoardTapAt = 0;
   let messageTimeout = null;
 
   function syncCluePanelForViewport() {
@@ -116,7 +148,72 @@ export async function renderGame1(container) {
   }
 
   function focusGame() {
+    if (nativeKeyboardMode) {
+      nativeKeyboardInput.focus({ preventScroll: true });
+      return;
+    }
     root.focus();
+  }
+
+  function hasNativeKeyboardPreference() {
+    try {
+      return localStorage.getItem(nativeKeyboardPreferenceKey) === "enabled";
+    } catch {
+      return false;
+    }
+  }
+
+  function rememberNativeKeyboardPreference() {
+    try {
+      localStorage.setItem(nativeKeyboardPreferenceKey, "enabled");
+    } catch {
+      // Preference persistence is optional; native keyboard mode still works.
+    }
+  }
+
+  function isMobileGameViewport() {
+    return mobileQuery.matches;
+  }
+
+  function setNativeKeyboardMode(enabled) {
+    if (!isMobileGameViewport()) return;
+
+    nativeKeyboardMode = enabled;
+    root.classList.toggle("native-keyboard-mode", enabled);
+    nativeKeyboardToggle.classList.toggle("hidden", !enabled);
+
+    if (enabled) {
+      nativeKeyboardInput.value = currentInput;
+      nativeKeyboardInput.focus({ preventScroll: true });
+    } else {
+      nativeKeyboardInput.blur();
+      nativeKeyboardInput.value = currentInput;
+      focusGame();
+    }
+  }
+
+  function showNativeKeyboardConfirmation() {
+    if (nativeKeyboardMode || !isMobileGameViewport() || nativeKeyboardPromptOpen) return;
+
+    if (hasNativeKeyboardPreference()) {
+      setNativeKeyboardMode(true);
+      return;
+    }
+
+    nativeKeyboardPromptOpen = true;
+    nativeKeyboardConfirm.classList.remove("hidden");
+    nativeKeyboardCancel.focus({ preventScroll: true });
+  }
+
+  function closeNativeKeyboardConfirmation() {
+    nativeKeyboardPromptOpen = false;
+    nativeKeyboardConfirm.classList.add("hidden");
+  }
+
+  function activateNativeKeyboard() {
+    closeNativeKeyboardConfirmation();
+    rememberNativeKeyboardPreference();
+    setNativeKeyboardMode(true);
   }
 
   function finishGame() {
@@ -281,6 +378,7 @@ export async function renderGame1(container) {
         : "";
 
     board.innerHTML = rows + seventh;
+    nativeKeyboardInput.value = currentInput;
     board.querySelector("#seventh-submit")?.addEventListener("click", submitSeventh);
     board.querySelector("#seventh-skip")?.addEventListener("click", skipSeventh);
   }
@@ -348,6 +446,48 @@ export async function renderGame1(container) {
     const key = event.target.closest("[data-key]")?.dataset.key;
     if (key) addInputKey(key);
     focusGame();
+  });
+
+  nativeKeyboardInput.addEventListener("input", () => {
+    if (!nativeKeyboardMode) return;
+    currentInput = sanitizeGuessInput(nativeKeyboardInput.value);
+    nativeKeyboardInput.value = currentInput;
+    renderBoard();
+  });
+
+  nativeKeyboardInput.addEventListener("keydown", (event) => {
+    if (!nativeKeyboardMode) return;
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      state.status === "playing" ? submitNormal() : submitSeventh();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setNativeKeyboardMode(false);
+    }
+  });
+
+  nativeKeyboardToggle.addEventListener("click", () => {
+    if (nativeKeyboardMode) setNativeKeyboardMode(false);
+  });
+
+  nativeKeyboardCancel.addEventListener("click", closeNativeKeyboardConfirmation);
+  nativeKeyboardConfirmButton.addEventListener("click", activateNativeKeyboard);
+
+  board.addEventListener("pointerup", (event) => {
+    if (!isMobileGameViewport() || !event.isPrimary || event.pointerType !== "touch") return;
+    if (!event.target.closest(".letter-cell")) return;
+
+    const now = performance.now();
+    if (now - lastBoardTapAt <= 320) {
+      lastBoardTapAt = 0;
+      showNativeKeyboardConfirmation();
+    } else {
+      lastBoardTapAt = now;
+    }
   });
 
   root.addEventListener("keydown", (event) => {
