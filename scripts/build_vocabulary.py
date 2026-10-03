@@ -131,3 +131,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# Reproducible build: source selection and filtering are documented above.
