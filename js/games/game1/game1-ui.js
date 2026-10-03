@@ -119,6 +119,8 @@ export async function renderGame1(container) {
   let nativeKeyboardPromptOpen = false;
   let lastBoardTapAt = 0;
   let messageTimeout = null;
+  let nativeKeyboardPositionGeneration = 0;
+  let nativeKeyboardPositionTimer = null;
 
   function syncCluePanelForViewport() {
     cluesPanel.open = !window.matchMedia("(max-width: 800px)").matches;
@@ -156,13 +158,7 @@ export async function renderGame1(container) {
   }
 
   function focusGame() {
-    if (
-      nativeKeyboardMode &&
-      (state.status === "playing" || state.status === "awaiting-seventh")
-    ) {
-      nativeKeyboardInput.focus({ preventScroll: true });
-      return;
-    }
+    if (nativeKeyboardMode) return;
     root.focus({ preventScroll: true });
   }
 
@@ -186,21 +182,86 @@ export async function renderGame1(container) {
     return mobileQuery.matches;
   }
 
+  function cancelNativeKeyboardPositioning() {
+    nativeKeyboardPositionGeneration += 1;
+    if (nativeKeyboardPositionTimer !== null) {
+      clearTimeout(nativeKeyboardPositionTimer);
+      nativeKeyboardPositionTimer = null;
+    }
+  }
+
+  function scheduleNativeKeyboardPositioning() {
+    const generation = ++nativeKeyboardPositionGeneration;
+    let positioned = false;
+
+    const positionOnce = () => {
+      if (
+        positioned ||
+        generation !== nativeKeyboardPositionGeneration ||
+        !nativeKeyboardMode ||
+        !isMobileGameViewport()
+      ) return;
+
+      positioned = true;
+      if (nativeKeyboardPositionTimer !== null) {
+        clearTimeout(nativeKeyboardPositionTimer);
+        nativeKeyboardPositionTimer = null;
+      }
+      window.visualViewport?.removeEventListener("resize", handleViewportResize);
+
+      const target =
+        board.querySelector(".game-row.active") ||
+        board.querySelector(".game-row.seventh-row") ||
+        playArea;
+
+      target?.scrollIntoView({
+        block: "center",
+        inline: "nearest",
+        behavior: "auto"
+      });
+    };
+
+    const handleViewportResize = () => {
+      requestAnimationFrame(positionOnce);
+    };
+
+    window.visualViewport?.addEventListener("resize", handleViewportResize, { once: true });
+    nativeKeyboardPositionTimer = setTimeout(() => {
+      requestAnimationFrame(positionOnce);
+    }, 350);
+  }
+
   function setNativeKeyboardMode(enabled) {
     if (enabled && !isMobileGameViewport()) return;
-
-    nativeKeyboardMode = enabled;
-    root.classList.toggle("native-keyboard-mode", enabled);
-    nativeKeyboardToggle.classList.toggle("hidden", !enabled);
+    if (enabled === nativeKeyboardMode) return;
 
     if (enabled) {
+      nativeKeyboardMode = true;
+      root.classList.add("native-keyboard-mode");
+      nativeKeyboardToggle.classList.remove("hidden");
+
+      nativeKeyboardInput.disabled = false;
+      nativeKeyboardInput.readOnly = false;
       nativeKeyboardInput.value = currentInput;
+
+      // Prepare the one-time positioning before focus so the keyboard's
+      // visual-viewport resize can trigger the positioning exactly once.
+      scheduleNativeKeyboardPositioning();
+
+      // Keep this focus inside the actual activation gesture so mobile
+      // browsers can reopen the native keyboard on every transition.
       nativeKeyboardInput.focus({ preventScroll: true });
-    } else {
-      nativeKeyboardInput.blur();
-      nativeKeyboardInput.value = currentInput;
-      focusGame();
+      return;
     }
+
+    nativeKeyboardMode = false;
+    root.classList.remove("native-keyboard-mode");
+    nativeKeyboardToggle.classList.add("hidden");
+    cancelNativeKeyboardPositioning();
+
+    nativeKeyboardInput.blur();
+    nativeKeyboardInput.value = currentInput;
+    focusGame();
   }
 
   function showNativeKeyboardConfirmation() {
@@ -394,7 +455,9 @@ export async function renderGame1(container) {
         : "";
 
     board.innerHTML = rows + seventh;
-    nativeKeyboardInput.value = currentInput;
+    if (nativeKeyboardInput.value !== currentInput) {
+      nativeKeyboardInput.value = currentInput;
+    }
     board.querySelector("#seventh-submit")?.addEventListener("click", submitSeventh);
     board.querySelector("#seventh-skip")?.addEventListener("click", skipSeventh);
   }
