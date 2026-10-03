@@ -1,48 +1,48 @@
 {
-  "description": "Index of Game 1 daily puzzle dates. Answers/status live in yearly schedule files and clues live in yearly clue files; the date is the synchronization key.",
+  "description": "Archive manifest for Game 1 daily puzzle data. Each date has one word file and one clue file; the date is the synchronization key.",
   "game": "game1",
   "puzzles": [
     {
       "id": "game1-2026-10-02",
       "game": "game1",
       "date": "2026-10-02",
-      "schedulePath": "schedule/2026.json",
-      "cluePath": "clues/2026.json"
+      "wordPath": "words/2026/2026-10-02.json",
+      "cluePath": "clues/2026/2026-10-02.json"
     },
     {
       "id": "game1-2026-10-03",
       "game": "game1",
       "date": "2026-10-03",
-      "schedulePath": "schedule/2026.json",
-      "cluePath": "clues/2026.json"
+      "wordPath": "words/2026/2026-10-03.json",
+      "cluePath": "clues/2026/2026-10-03.json"
     },
     {
       "id": "game1-2026-10-04",
       "game": "game1",
       "date": "2026-10-04",
-      "schedulePath": "schedule/2026.json",
-      "cluePath": "clues/2026.json"
+      "wordPath": "words/2026/2026-10-04.json",
+      "cluePath": "clues/2026/2026-10-04.json"
     },
     {
       "id": "game1-2026-10-05",
       "game": "game1",
       "date": "2026-10-05",
-      "schedulePath": "schedule/2026.json",
-      "cluePath": "clues/2026.json"
+      "wordPath": "words/2026/2026-10-05.json",
+      "cluePath": "clues/2026/2026-10-05.json"
     },
     {
       "id": "game1-2026-10-06",
       "game": "game1",
       "date": "2026-10-06",
-      "schedulePath": "schedule/2026.json",
-      "cluePath": "clues/2026.json"
+      "wordPath": "words/2026/2026-10-06.json",
+      "cluePath": "clues/2026/2026-10-06.json"
     },
     {
       "id": "game1-2026-10-07",
       "game": "game1",
       "date": "2026-10-07",
-      "schedulePath": "schedule/2026.json",
-      "cluePath": "clues/2026.json"
+      "wordPath": "words/2026/2026-10-07.json",
+      "cluePath": "clues/2026/2026-10-07.json"
     }
   ]
 }
