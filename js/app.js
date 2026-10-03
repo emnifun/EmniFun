@@ -12,6 +12,12 @@ const gameArea = document.querySelector("#game-area");
 
 function showView(viewId) {
   document.title = "EmniFun";
+
+  if (viewId === "games" && gamesView.classList.contains("game-playing")) {
+    gamesView.classList.remove("game-playing");
+    renderGames();
+  }
+
   views.forEach((view) => view.classList.toggle("active", view.id === viewId));
   navLinks.forEach((link) => link.classList.toggle("active", link.dataset.view === viewId));
   if (viewId === "statistics") renderStatistics();
