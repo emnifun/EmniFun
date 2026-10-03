@@ -5,6 +5,7 @@ import {
   GAME1_CONFIG,
   GAME1_RESULT,
   createGame1State,
+  isGuessAlreadyUsed,
   evaluateGuess,
   evaluateSeventhAttempt,
   isValidGuess,
@@ -101,6 +102,72 @@ const validWords = new Set([
   const first = submitNormalGuess(state, "APPLE", "HOUSE");
   assert(first.attemptIndex === 0, "Guess after out-of-order clues must use Row 1.");
   assert(state.guesses[1] === null && state.guesses[3] === null, "Clue-consumed rows must never receive guesses.");
+}
+
+
+{
+  const state = createGame1State(validWords);
+  const first = submitNormalGuess(state, "APPLE", "HOUSE");
+  assert(first.ok, "First valid guess should be accepted.");
+  assert(isGuessAlreadyUsed(state, "APPLE"), "Accepted guesses must be tracked in the current session.");
+
+  const beforeAttempts = state.attempts.slice();
+  const beforeGuesses = state.guesses.slice();
+  const duplicate = submitNormalGuess(state, "APPLE", "HOUSE");
+  assert(!duplicate.ok && duplicate.duplicate, "The same word must be rejected as a duplicate.");
+  assert(duplicate.message === "Already guessed! Try another.", "Duplicate should return the friendly duplicate message.");
+  assert(
+    JSON.stringify(state.attempts) === JSON.stringify(beforeAttempts),
+    "A duplicate guess must not consume or advance an attempt."
+  );
+  assert(
+    JSON.stringify(state.guesses) === JSON.stringify(beforeGuesses),
+    "A duplicate guess must not be added to guess history."
+  );
+}
+
+{
+  const state = createGame1State(validWords);
+  submitNormalGuess(state, "APPLE", "HOUSE");
+
+  const lowercase = submitNormalGuess(state, "apple", "HOUSE");
+  assert(!lowercase.ok && lowercase.duplicate, "Lowercase duplicate must be rejected.");
+
+  const spaced = submitNormalGuess(state, "  APPLE  ", "HOUSE");
+  assert(!spaced.ok && spaced.duplicate, "Whitespace/case variants must be rejected as duplicates.");
+
+  assert(state.guesses.filter(Boolean).length === 1, "Duplicate variants must not add another submitted guess.");
+}
+
+{
+  const state = createGame1State(validWords);
+  const firstInvalid = submitNormalGuess(state, "ZZZZZ", "HOUSE");
+  const secondInvalid = submitNormalGuess(state, "ZZZZZ", "HOUSE");
+  assert(!firstInvalid.ok && !firstInvalid.duplicate, "An invalid word must keep the existing invalid-word behavior.");
+  assert(!secondInvalid.ok && !secondInvalid.duplicate, "An invalid word must not become a duplicate merely by being repeated.");
+  assert(state.guesses.filter(Boolean).length === 0, "Invalid words must not enter submitted-guess history.");
+}
+
+{
+  const state = createGame1State(validWords);
+  submitNormalGuess(state, "APPLE", "HOUSE");
+  useClue(state, 2);
+
+  const before = state.attempts.slice();
+  const duplicate = submitNormalGuess(state, "APPLE", "HOUSE");
+  assert(!duplicate.ok && duplicate.duplicate, "Duplicate must be rejected after clue use.");
+  assert(JSON.stringify(state.attempts) === JSON.stringify(before), "Duplicate after clue use must not change attempt state.");
+  assert(getNextNormalAttemptIndex(state) === 2, "Duplicate after Row 1 + Clue 2 must leave Row 3 active.");
+}
+
+{
+  const firstSession = createGame1State(validWords);
+  submitNormalGuess(firstSession, "APPLE", "HOUSE");
+  assert(isGuessAlreadyUsed(firstSession, "APPLE"), "APPLE should be used in the first session.");
+
+  const secondSession = createGame1State(validWords);
+  assert(!isGuessAlreadyUsed(secondSession, "APPLE"), "A new Game 1 session must start with an empty duplicate set.");
+  assert(submitNormalGuess(secondSession, "APPLE", "HOUSE").ok, "The same word must be allowed in a new session.");
 }
 
 {
