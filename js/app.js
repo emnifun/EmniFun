@@ -7,6 +7,7 @@ import { isLoggedIn } from "./auth/auth.js";
 const views = [...document.querySelectorAll(".view")];
 const navLinks = [...document.querySelectorAll(".nav-link")];
 const viewLinks = [...document.querySelectorAll("[data-view]")];
+const gamesView = document.querySelector("#games");
 const gameArea = document.querySelector("#game-area");
 
 function showView(viewId) {
@@ -25,6 +26,7 @@ function renderGames() {
     '</div>';
 
   gameArea.querySelector('[data-game="game1"]').addEventListener("click", () => {
+    gamesView.classList.add("game-playing");
     void renderGame1(gameArea);
   });
   gameArea.querySelector('[data-game="game2"]').addEventListener("click", () => renderGame2(gameArea));
@@ -56,7 +58,10 @@ function setupNavigation() {
     button.addEventListener("click", () => showView("games"));
   });
 
-  gameArea.addEventListener("game1-back", () => renderGames());
+  gameArea.addEventListener("game1-back", () => {
+    gamesView.classList.remove("game-playing");
+    renderGames();
+  });
 }
 
 function initialize() {
