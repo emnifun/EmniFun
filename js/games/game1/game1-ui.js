@@ -121,6 +121,7 @@ export async function renderGame1(container) {
   let messageTimeout = null;
   let nativeKeyboardPositionGeneration = 0;
   let nativeKeyboardPositionTimer = null;
+  let nativeKeyboardPositionCleanup = null;
 
   function syncCluePanelForViewport() {
     cluesPanel.open = !window.matchMedia("(max-width: 800px)").matches;
@@ -188,6 +189,8 @@ export async function renderGame1(container) {
       clearTimeout(nativeKeyboardPositionTimer);
       nativeKeyboardPositionTimer = null;
     }
+    nativeKeyboardPositionCleanup?.();
+    nativeKeyboardPositionCleanup = null;
   }
 
   function scheduleNativeKeyboardPositioning() {
@@ -212,7 +215,8 @@ export async function renderGame1(container) {
         clearTimeout(resizeDebounceTimer);
         resizeDebounceTimer = null;
       }
-      window.visualViewport?.removeEventListener("resize", handleViewportResize);
+      nativeKeyboardPositionCleanup?.();
+      nativeKeyboardPositionCleanup = null;
 
       const target =
         board.querySelector(".game-row.active") ||
@@ -239,6 +243,13 @@ export async function renderGame1(container) {
     };
 
     window.visualViewport?.addEventListener("resize", handleViewportResize);
+    nativeKeyboardPositionCleanup = () => {
+      window.visualViewport?.removeEventListener("resize", handleViewportResize);
+      if (resizeDebounceTimer !== null) {
+        clearTimeout(resizeDebounceTimer);
+        resizeDebounceTimer = null;
+      }
+    };
 
     // Fallback for browsers that do not emit visualViewport.resize reliably.
     nativeKeyboardPositionTimer = setTimeout(() => {
