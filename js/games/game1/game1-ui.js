@@ -6,15 +6,20 @@ import {
   createGame1State,
   getNextNormalAttemptIndex,
   sanitizeGuessInput,
-  submitNormalGuess,
-  submitSeventhGuess,
-  skipSeventhAttempt,
-  useClue
+  isEnglishFiveLetterWord,
+  applyNormalGuessResult,
+  applySeventhGuessResult,
+  applyClueResult,
+  applySeventhSkipResult
 } from "./game1-logic.js";
 import {
-  getGame1ValidWords,
   getPublishedPuzzleForToday
 } from "../../services/puzzle-service.js";
+import {
+  submitFiveWinkGuess,
+  useFiveWinkClue,
+  skipFiveWinkSeventh
+} from "../../services/api.js";
 import { recordGameResult } from "../../statistics/statistics.js";
 import { saveGameResult } from "../../services/api.js";
 import { playFiveWinkSound } from "./game1-sound.js";
@@ -27,13 +32,9 @@ export async function renderGame1(container) {
     '<div class="placeholder"><h2>Loading FiveWink…</h2><p>Loading the current published puzzle.</p></div>';
 
   let puzzle;
-  let validWords;
 
   try {
-    [puzzle, validWords] = await Promise.all([
-      getPublishedPuzzleForToday(),
-      getGame1ValidWords()
-    ]);
+    puzzle = await getPublishedPuzzleForToday();
   } catch (error) {
     container.innerHTML =
       '<div class="placeholder"><h2>FiveWink could not load</h2><p>' +
@@ -48,8 +49,10 @@ export async function renderGame1(container) {
     return;
   }
 
-  const state = createGame1State(validWords);
+  const state = createGame1State();
   let currentInput = "";
+  let gameToken = puzzle.gameToken;
+  let requestInFlight = false;
 
   container.innerHTML = `
     <div class="game-shell" tabindex="0">
@@ -136,8 +139,7 @@ export async function renderGame1(container) {
     const seventhGuess = state.guesses[GAME1_CONFIG.normalAttempts];
     const seventhGuessWasRight =
       state.result === GAME1_RESULT.FAILED_CLOSE &&
-      seventhGuess &&
-      seventhGuess === state.answer;
+      Boolean(seventhGuess);
 
     const labels = {
       [GAME1_RESULT.SOLVED]: "Solved!",
@@ -162,90 +164,136 @@ export async function renderGame1(container) {
     seeWhyButton.classList.remove("hidden");
   }
 
-  function submitNormal() {
-    if (state.status !== "playing") return;
+  async function submitNormal() {
+    if (state.status !== "playing" || requestInFlight) return;
 
     if (currentInput.length !== 5) {
       showMessage("Enter a five-letter word.");
       return;
     }
 
-    const result = submitNormalGuess(state, currentInput, puzzle.answer);
+    const guess = currentInput;
+    currentInput = "";
+    requestInFlight = true;
 
-    if (!result.ok) {
-      if (result.duplicate) {
+    try {
+      const result = await submitFiveWinkGuess({
+        puzzleId: puzzle.id,
+        guess,
+        gameToken
+      });
+
+      gameToken = result.gameToken;
+      const applied = applyNormalGuessResult(state, guess, result);
+
+      if (!applied.ok) {
+        throw new Error(applied.message);
+      }
+
+      showMessage(result.seventhStage ? "You used all six normal attempts." : "");
+      renderBoard();
+      renderClues();
+      renderKeyboard();
+
+      if (result.solved) finishGame();
+      focusGame();
+    } catch (error) {
+      if (error?.duplicate) {
         currentInput = "";
-        showMessage(result.message, true);
+        showMessage(error.message, true);
         renderBoard();
       } else {
-        showMessage(result.message);
+        currentInput = guess;
+        showMessage(error?.message || "The guess could not be checked.");
+        renderBoard();
       }
+
       focusGame();
-      return;
+    } finally {
+      requestInFlight = false;
     }
-
-    currentInput = "";
-    showMessage(result.seventhStage ? "You used all six normal attempts." : "");
-    renderBoard();
-    renderClues();
-    renderKeyboard();
-
-    if (result.solved) finishGame();
-    focusGame();
   }
-
-  function submitSeventh() {
-    if (state.status !== "awaiting-seventh") return;
+  async function submitSeventh() {
+    if (state.status !== "awaiting-seventh" || requestInFlight) return;
 
     if (currentInput.length !== 5) {
       showMessage("Enter a five-letter word.");
       return;
     }
 
-    const result = submitSeventhGuess(state, currentInput, puzzle.answer);
-
-    if (!result.ok) {
-      if (result.duplicate) {
-        currentInput = "";
-        showMessage(result.message, true);
-        renderBoard();
-      } else {
-        showMessage(result.message);
-      }
-      focusGame();
-      return;
-    }
-
+    const guess = currentInput;
     currentInput = "";
+    requestInFlight = true;
 
-    const seventhGuessWasRight =
-      result.result === GAME1_RESULT.FAILED_CLOSE &&
-      state.guesses[GAME1_CONFIG.normalAttempts] === state.answer;
+    try {
+      const result = await submitFiveWinkGuess({
+        puzzleId: puzzle.id,
+        guess,
+        gameToken
+      });
 
-    showMessage(
-      seventhGuessWasRight
-        ? "Your 7th guess was right — but it does not count as a solve."
-        : result.result === GAME1_RESULT.FAILED_CLOSE
-          ? "Your final guess was close."
+      gameToken = result.gameToken;
+      const applied = applySeventhGuessResult(state, guess, result);
+
+      if (!applied.ok) {
+        throw new Error(applied.message);
+      }
+
+      showMessage(
+        result.result === GAME1_RESULT.FAILED_CLOSE
+          ? "Your 7th guess was right — but it does not count as a solve."
           : "Your final guess was not close enough."
-    );
-    renderBoard();
-    renderKeyboard();
-    finishGame();
-    focusGame();
+      );
+      renderBoard();
+      renderKeyboard();
+      finishGame();
+      focusGame();
+    } catch (error) {
+      if (error?.duplicate) {
+        currentInput = "";
+        showMessage(error.message, true);
+        renderBoard();
+      } else {
+        currentInput = guess;
+        showMessage(error?.message || "The final guess could not be checked.");
+        renderBoard();
+      }
+
+      focusGame();
+    } finally {
+      requestInFlight = false;
+    }
   }
+  async function skipSeventh() {
+    if (state.status !== "awaiting-seventh" || requestInFlight) return;
 
-  function skipSeventh() {
-    if (state.status !== "awaiting-seventh") return;
+    requestInFlight = true;
 
-    skipSeventhAttempt(state, puzzle.answer);
-    currentInput = "";
-    showMessage("You didn't take the final guess. Result: Failed — Hard.");
-    renderBoard();
-    finishGame();
-    focusGame();
+    try {
+      const result = await skipFiveWinkSeventh({
+        puzzleId: puzzle.id,
+        gameToken
+      });
+
+      gameToken = result.gameToken;
+      const applied = applySeventhSkipResult(state, result);
+
+      if (!applied.ok) {
+        throw new Error(applied.message);
+      }
+
+      currentInput = "";
+      showMessage("You didn't take the final guess. Result: Failed — Hard.");
+      renderBoard();
+      finishGame();
+      focusGame();
+    } catch (error) {
+      showMessage(error?.message || "The final guess could not be skipped.");
+      focusGame();
+    } finally {
+      requestInFlight = false;
+    }
   }
-
   function renderBoard() {
     const rows = Array.from({ length: GAME1_CONFIG.normalAttempts }, (_, index) => {
       const guess = state.guesses[index] || "";
@@ -318,12 +366,37 @@ export async function renderGame1(container) {
     }).join("");
 
     clues.querySelectorAll(".clue-action").forEach((button) => {
-      button.addEventListener("click", () => {
-        const result = useClue(state, Number(button.dataset.clue));
-        showMessage(result.message || "Clue revealed.");
-        renderBoard();
-        renderClues();
-        focusGame();
+      button.addEventListener("click", async () => {
+        if (requestInFlight) return;
+
+        const clueNumber = Number(button.dataset.clue);
+        requestInFlight = true;
+        button.disabled = true;
+
+        try {
+          const result = await useFiveWinkClue({
+            puzzleId: puzzle.id,
+            clueNumber,
+            gameToken
+          });
+
+          gameToken = result.gameToken;
+          const applied = applyClueResult(state, clueNumber);
+
+          if (!applied.ok) {
+            throw new Error(applied.message);
+          }
+
+          showMessage("Clue revealed.");
+          renderBoard();
+          renderClues();
+          focusGame();
+        } catch (error) {
+          showMessage(error?.message || "The clue could not be revealed.");
+          focusGame();
+        } finally {
+          requestInFlight = false;
+        }
       });
     });
   }
@@ -407,6 +480,8 @@ export async function renderGame1(container) {
   });
 
   root.addEventListener("keydown", (event) => {
+    if (requestInFlight) return;
+
     if (event.key === "Enter") {
       event.preventDefault();
       state.status === "playing" ? submitNormal() : submitSeventh();
@@ -437,8 +512,7 @@ export async function renderGame1(container) {
     if (state.status !== "finished") return;
 
     const seventhGuessWasRight =
-      state.result === GAME1_RESULT.FAILED_CLOSE &&
-      state.guesses[GAME1_CONFIG.normalAttempts] === state.answer;
+      state.result === GAME1_RESULT.FAILED_CLOSE;
 
     const context =
       state.result === GAME1_RESULT.SOLVED
