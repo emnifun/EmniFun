@@ -226,7 +226,7 @@ export async function renderGame1(container) {
         ? `
           <div class="seventh-stage">
             <div class="close-banner">You failed — but are you close?</div>
-            <div class="game-row seventh-row active">
+            <div class="game-row seventh-row${state.status === "awaiting-seventh" ? " active" : ""}" aria-current="${state.status === "awaiting-seventh" ? "true" : "false"}">
               ${Array.from({ length: 5 }, (_, index) => {
                 const value =
                   state.guesses[GAME1_CONFIG.normalAttempts]?.[index] ||
