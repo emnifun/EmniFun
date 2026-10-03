@@ -250,10 +250,11 @@ export async function renderGame1(container) {
   function renderClues() {
     clues.innerHTML = state.clues.map((status, index) => {
       const number = index + 1;
+      const currentAttemptIndex = getNextNormalAttemptIndex(state);
       const action =
         status === "available" &&
         state.status === "playing" &&
-        state.attempts[index] === null
+        index === currentAttemptIndex
           ? `<button class="button secondary clue-action" data-clue="${number}" type="button">Use Clue #${number}</button>`
           : "";
 
