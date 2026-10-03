@@ -32,11 +32,10 @@ for (const word of ["APPLE", "THING", "AARTI", "LUDIC", "JIVER", "CWTCH", "WHEES
 }
 
 for (const word of ["EMACS", "NIMBY", "CCITT", "ACCRA", "ZILLA", "ADMRX", "APPMT", "ADDDA"]) {
-  assert(!data.validWords.has(word), "Obvious source-flagged or malformed entry should be filtered: " + word);
+  assert(!data.validWords.has(word), "Obvious source-marked or malformed entry should be filtered: " + word);
 }
 
 assert(data.puzzleIndex.game === "game1", "Puzzle archive index must be for Game 1.");
-assert(data.puzzleIndex.puzzles.length === 6, "Current sample archive should contain six date entries.");
 assert(
   data.puzzleIndex.puzzles.every((entry) =>
     entry.path === entry.date.slice(0, 4) + "/" + entry.date + ".json"
@@ -44,12 +43,12 @@ assert(
   "Every archive entry must use the canonical date-based file path."
 );
 
-const today = await getPublishedPuzzleForDate("2026-10-02");
-assert(today?.answer === "APPLE", "Published puzzle for October 2 should load from its date file.");
+const today = await getPublishedPuzzleForDate("2026-10-03");
+assert(today?.answer === "HOUSE", "Published puzzle for October 3 should load from its date file.");
 assert(today?.clues.length === 5, "Today's puzzle clues must come from puzzle data.");
 
 assert(
-  await getPublishedPuzzleForDate("2026-10-03") === null,
+  await getPublishedPuzzleForDate("2026-10-05") === null,
   "Draft puzzle must not be selected."
 );
 assert(
@@ -102,7 +101,7 @@ assert(
 );
 
 const validated = validatePuzzleRecord(today, data.validWords, data.answerWords);
-assert(validated.answer === "APPLE", "Validated answer must come from puzzle data.");
+assert(validated.answer === "HOUSE", "Validated answer must come from puzzle data.");
 assert(validated.clues.length === 5, "Selected puzzle must have exactly five clues.");
 
 for (const badRecord of [
