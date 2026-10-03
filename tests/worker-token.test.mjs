@@ -10,7 +10,7 @@ function assert(condition, message) {
 
 const secret = "fivewink-test-secret";
 const payload = createFreshGameTokenPayload(
-  "session-12345678-1234-1234-1234-123456789012",
+  "123e4567-e89b-12d3-a456-426614174000",
   "game1-2026-10-04",
   "2026-10-04"
 );
