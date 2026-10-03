@@ -40,144 +40,100 @@ Every answer candidate should also exist in `valid-guesses.json`.
 
 ## Puzzle data
 
-Game 1 daily puzzle data is separated into three layers:
+Game 1 daily puzzle storage is date-wise:
 
-1. **Answer schedule** — chooses the answer and status for each date.
-2. **Clue data** — stores the five clues for each date.
-3. **Puzzle index** — lists which Game 1 dates exist and points to the yearly schedule/clue files.
+ONE DATE = ONE WORD FILE + ONE CLUE FILE
 
-Folder:
+Example for 2026-10-03:
 
-`data/game1/puzzles/`
+data/game1/puzzles/words/2026/2026-10-03.json
+data/game1/puzzles/clues/2026/2026-10-03.json
 
-Structure:
+The word file contains the answer and status for that date only.
+The clue file contains the five clues for that date only.
+Both files use game = game1, the same date, and the same puzzle ID.
 
-```
-puzzles/
-├── index.json
-├── README.md
-├── schedule/
-│   └── 2026.json
-└── clues/
-    └── 2026.json
-```
+Word file:
 
-### Daily answer schedule
-
-File:
-
-`data/game1/puzzles/schedule/2026.json`
-
-The schedule is the source of truth for:
-
-`DATE → ANSWER + STATUS`
-
-Example:
-
-```json
-{
-  "game": "game1",
-  "year": 2026,
-  "puzzles": {
-    "2026-10-03": {
-      "answer": "HOUSE",
-      "status": "published"
-    }
-  }
-}
-```
-
-Do not copy daily clues into the schedule.
-
-### Daily clue data
-
-File:
-
-`data/game1/puzzles/clues/2026.json`
-
-The clue data is the source of truth for:
-
-`DATE → FIVE CLUES`
-
-Each clue record uses the same date and Game 1 puzzle ID so the two data layers cannot be silently mixed.
-
-Example:
-
-```json
-{
-  "game": "game1",
-  "year": 2026,
-  "puzzles": {
-    "2026-10-03": {
-      "id": "game1-2026-10-03",
-      "clues": [
-        "People live in it.",
-        "It has rooms.",
-        "It usually has a door.",
-        "It can have a roof.",
-        "It is a place to live."
-      ]
-    }
-  }
-}
-```
-
-### Puzzle service synchronization
-
-The Game 1 UI and logic do not read either file directly.
-
-The puzzle service uses the **date** as the synchronization key, loads the matching schedule and clue records, validates them, and creates the same effective puzzle object Game 1 already expects:
-
-```json
 {
   "id": "game1-2026-10-03",
   "game": "game1",
   "date": "2026-10-03",
   "answer": "HOUSE",
-  "clues": ["...", "...", "...", "...", "..."],
   "status": "published"
 }
-```
 
-The game therefore remains independent from the storage layout.
+Clue file:
 
-### Creating a new daily puzzle
+{
+  "id": "game1-2026-10-03",
+  "game": "game1",
+  "date": "2026-10-03",
+  "clues": [
+    "People live in it.",
+    "It has rooms.",
+    "It usually has a door.",
+    "It can have a roof.",
+    "It is a place to live."
+  ]
+}
 
-For a future date such as `2026-10-08`:
+Do not put multiple dates into one daily word file or one daily clue file.
 
-1. Add the answer and status to `schedule/2026.json`.
-2. Add the five clues to `clues/2026.json` under the same date.
-3. Add the date to `index.json` with the matching yearly schedule/clue paths.
-4. Use `draft` until the puzzle is ready.
-5. Change the schedule status to `published` when it should become playable.
+### Puzzle index
 
-You do **not** copy the answer into the clue data.
+data/game1/puzzles/index.json is only the manifest. Each date points to its two daily files.
 
-You do **not** need to edit Game 1 UI or Game 1 logic.
+Example entry:
+
+{
+  "id": "game1-2026-10-03",
+  "game": "game1",
+  "date": "2026-10-03",
+  "wordPath": "words/2026/2026-10-03.json",
+  "cluePath": "clues/2026/2026-10-03.json"
+}
+
+The index does not duplicate answer or clue text.
+
+### Puzzle service
+
+The Game 1 UI and logic do not read word or clue files directly.
+The puzzle service uses the date/index entry, loads that date's two files, validates them,
+and combines them into the same puzzle object Game 1 already expects:
+
+    id + game + date + answer + clues + status
+
+### Create a new daily puzzle
+
+For 2026-10-08:
+
+1. Create puzzles/words/2026/2026-10-08.json.
+2. Put the selected answer and status in it.
+3. Create puzzles/clues/2026/2026-10-08.json.
+4. Put exactly five clues in it.
+5. Use date 2026-10-08 in both files.
+6. Add the matching wordPath and cluePath entry to index.json.
+
+Start with status = draft and change it to published when ready.
 
 ### Statuses
 
-Supported statuses are:
+- draft — being prepared; not selected for normal play.
+- published — the official puzzle for that date.
+- unpublished — exists but is unavailable for normal play.
+- archived — historical puzzle kept for the archive.
 
-- `draft` — being prepared; never selected for normal play.
-- `published` — the official puzzle for that date.
-- `unpublished` — intentionally unavailable for normal play.
-- `archived` — historical puzzle; kept but not playable.
+Status belongs to the daily word record.
 
-Status belongs to the daily scheduled puzzle and is stored with the answer schedule, not separately on individual clues.
+### Future years
 
-### Migration rule
+The same pattern works for every year:
 
-Existing daily answers and clues must remain unchanged when moving between the old combined date files and the new split schedule/clue structure.
+    puzzles/words/2027/2027-01-01.json
+    puzzles/clues/2027/2027-01-01.json
 
-The answer candidate pool remains in:
-
-`data/game1/vocabulary/answers.json`
-
-The guess vocabulary remains in:
-
-`data/game1/vocabulary/valid-guesses.json`
-
+Existing answers, clues, dates, IDs, and statuses must be preserved exactly during migrations.
 ## Static-site privacy limitation
 
 This is a public static-site architecture. Any puzzle JSON that is checked into and shipped from a public GitHub repository can be inspected by users, even when its status is `draft` or `unpublished`.
