@@ -1,0 +1,12 @@
+{
+  "name": "emnifun",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-04",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "emnifun-db",
+      "database_id": "10ae7385-bdc8-45c9-9739-d4815fc3f6ec"
+    }
+  ]
+}
