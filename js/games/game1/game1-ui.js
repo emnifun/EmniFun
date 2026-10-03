@@ -187,6 +187,7 @@ export async function renderGame1(container) {
     showMessage(result.seventhStage ? "You used all six normal attempts." : "");
     renderBoard();
     renderClues();
+    renderKeyboard();
 
     if (result.solved) finishGame();
     focusGame();
@@ -228,6 +229,7 @@ export async function renderGame1(container) {
           : "Your final guess was not close enough."
     );
     renderBoard();
+    renderKeyboard();
     finishGame();
     focusGame();
   }
@@ -325,11 +327,40 @@ export async function renderGame1(container) {
     });
   }
 
+  function getKeyboardLetterStates() {
+    const priority = {
+      absent: 1,
+      "wrong-position": 2,
+      correct: 3
+    };
+    const states = {};
+
+    state.guesses.forEach((guess, attemptIndex) => {
+      const feedback = state.feedback[attemptIndex];
+      if (!guess || !feedback) return;
+
+      feedback.forEach((status, letterIndex) => {
+        const letter = guess[letterIndex];
+        if (!letter || !priority[status]) return;
+
+        const current = states[letter];
+        if (!current || priority[status] > priority[current]) {
+          states[letter] = status;
+        }
+      });
+    });
+
+    return states;
+  }
+
   function renderKeyboard() {
+    const letterStates = getKeyboardLetterStates();
+
     keyboard.innerHTML =
-      LETTERS.split("").map((letter) =>
-        `<button type="button" class="key" data-key="${letter}">${letter}</button>`
-      ).join("") +
+      LETTERS.split("").map((letter) => {
+        const status = letterStates[letter] || "";
+        return `<button type="button" class="key ${status}" data-key="${letter}">${letter}</button>`;
+      }).join("") +
       '<button type="button" class="key wide" data-key="BACKSPACE">⌫</button>' +
       '<button type="button" class="key wide" data-key="ENTER">Enter</button>';
   }
