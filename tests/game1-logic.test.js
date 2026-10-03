@@ -56,6 +56,54 @@ const validWords = new Set([
 }
 
 {
+  const state = createGame1State(validWords);
+  submitNormalGuess(state, "APPLE", "HOUSE");
+  assert(useClue(state, 2).ok, "Clue 2 must be usable after Row 1 is guessed.");
+  assert(state.attempts[1] === "clue", "Clue 2 must consume Row 2.");
+  assert(getNextNormalAttemptIndex(state) === 2, "After Row 1 guess + Clue 2, Row 3 must be next.");
+  const third = submitNormalGuess(state, "CHAIR", "HOUSE");
+  assert(third.attemptIndex === 2, "The next submitted guess must be stored on Row 3.");
+  assert(state.guesses[1] === null, "Row 2 must remain unavailable for guesses after Clue 2.");
+}
+
+{
+  const state = createGame1State(validWords);
+  submitNormalGuess(state, "APPLE", "HOUSE");
+  assert(useClue(state, 3).ok, "Clue 3 must be usable after Row 1 is guessed.");
+  assert(getNextNormalAttemptIndex(state) === 1, "After Row 1 guess + Clue 3, Row 2 must be next.");
+  const second = submitNormalGuess(state, "CHAIR", "HOUSE");
+  assert(second.attemptIndex === 1, "The next submitted guess must be stored on Row 2.");
+  assert(state.guesses[2] === null, "Row 3 must remain unavailable for guesses after Clue 3.");
+}
+
+{
+  const state = createGame1State(validWords);
+  assert(useClue(state, 1).ok, "Clue 1 must consume Row 1.");
+  assert(getNextNormalAttemptIndex(state) === 1, "After Clue 1, Row 2 must be next.");
+  const second = submitNormalGuess(state, "APPLE", "HOUSE");
+  assert(second.attemptIndex === 1, "After Clue 1, the next guess must use Row 2.");
+}
+
+{
+  const state = createGame1State(validWords);
+  assert(useClue(state, 1).ok, "Clue 1 must be usable.");
+  assert(useClue(state, 2).ok, "Clue 2 must be usable.");
+  assert(getNextNormalAttemptIndex(state) === 2, "After Clues 1 and 2, Row 3 must be next.");
+  const third = submitNormalGuess(state, "CHAIR", "HOUSE");
+  assert(third.attemptIndex === 2, "Guess after Clues 1 and 2 must use Row 3.");
+}
+
+{
+  const state = createGame1State(validWords);
+  assert(useClue(state, 2).ok, "Clue 2 must be usable out of order.");
+  assert(useClue(state, 4).ok, "Clue 4 must be usable out of order.");
+  assert(getNextNormalAttemptIndex(state) === 0, "After Clues 2 and 4, Row 1 must be next.");
+  const first = submitNormalGuess(state, "APPLE", "HOUSE");
+  assert(first.attemptIndex === 0, "Guess after out-of-order clues must use Row 1.");
+  assert(state.guesses[1] === null && state.guesses[3] === null, "Clue-consumed rows must never receive guesses.");
+}
+
+{
   const feedback = evaluateGuess("SHEEP", "APPLE");
   assert(feedback.length === 5, "Feedback must contain five positions.");
   assert(feedback[3] === "absent", "Duplicate-letter evaluation must account for answer letter counts.");
@@ -74,16 +122,32 @@ const validWords = new Set([
 }
 
 {
-  const seventhExact = createGame1State(validWords);
-  seventhExact.status = "awaiting-seventh";
-  const exact = submitSeventhGuess(seventhExact, "HOUSE", "HOUSE");
-  assert(exact.ok && exact.result !== GAME1_RESULT.SOLVED, "Seventh exact answer must still be failure.");
+  const exact = evaluateSeventhAttempt("HOUSE", "HOUSE");
+  assert(exact.result === GAME1_RESULT.FAILED_CLOSE, "The exact answer should trigger FAILED_CLOSE in the seventh stage.");
+  assert(exact.isClose === true, "The configured seventh close condition should be true for the exact answer.");
 
-  const close = evaluateSeventhAttempt("HOUSE", "HOUSE");
-  const hard = evaluateSeventhAttempt("MANGO", "HOUSE");
-  assert(close.result === GAME1_RESULT.FAILED_CLOSE, "Close seventh guess should be close under temporary rule.");
-  assert(hard.result === GAME1_RESULT.FAILED_HARD, "Distant seventh guess should be hard.");
+  const twoCorrectPositionsButNotExact = evaluateSeventhAttempt("APZZZ", "APPLE");
+  assert(
+    twoCorrectPositionsButNotExact.result === GAME1_RESULT.FAILED_HARD,
+    "Two correct positions alone must NOT trigger FAILED_CLOSE."
+  );
+  assert(
+    twoCorrectPositionsButNotExact.isClose === false,
+    "A non-exact seventh guess must be FAILED_HARD under the current rule."
+  );
+
+  const state = createGame1State(validWords);
+  state.status = "awaiting-seventh";
+  const submitted = submitSeventhGuess(state, "HOUSE", "HOUSE");
+  assert(submitted.ok && submitted.result === GAME1_RESULT.FAILED_CLOSE, "Seventh exact answer must still be a failure result.");
+  assert(submitted.result !== GAME1_RESULT.SOLVED, "Seventh attempt can never be SOLVED.");
+  assert(
+    state.guesses[GAME1_CONFIG.normalAttempts] === "HOUSE",
+    "The seventh guess must be stored separately from the six normal rows."
+  );
 }
 
 assert(GAME1_CONFIG.normalAttempts === 6, "Six normal attempts must remain configured.");
+assert(GAME1_CONFIG.clueCount === 5, "Five clues must remain configured.");
+assert(GAME1_CONFIG.seventhAttemptCloseRule === "exact-answer", "The seventh close rule must use the configured exact-answer rule.");
 console.log("Game 1 logic checks passed.");
