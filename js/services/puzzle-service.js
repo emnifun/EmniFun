@@ -1,9 +1,9 @@
 /**
- * Game 1 puzzle/data service.
+ * FiveWink puzzle/data service.
  *
- * Game 1 UI code uses this service contract and never reads JSON files
+ * FiveWink UI code uses this service contract and never reads JSON files
  * directly. Today the implementation uses local JSON files. Later the
- * implementation can call a backend API/database without changing Game 1.
+ * implementation can call a backend API/database without changing FiveWink.
  */
 
 const VALID_GUESSES_URL = new URL("../../data/game1/vocabulary/valid-guesses.json", import.meta.url);
@@ -52,11 +52,11 @@ async function fetchJson(url, label) {
 
 function validatePuzzleIndex(index) {
   if (!index || typeof index !== "object") {
-    throw new PuzzleDataError("The Game 1 puzzle index is invalid.");
+    throw new PuzzleDataError("The FiveWink puzzle index is invalid.");
   }
 
   if (index.game !== "game1") {
-    throw new PuzzleDataError("The Game 1 puzzle index has an invalid game identifier.");
+    throw new PuzzleDataError("The FiveWink puzzle index has an invalid game identifier.");
   }
 
   if (!Array.isArray(index.puzzles)) {
@@ -68,11 +68,11 @@ function validatePuzzleIndex(index) {
 
   const puzzles = index.puzzles.map((entry) => {
     if (!entry || typeof entry !== "object") {
-      throw new PuzzleDataError("The Game 1 puzzle index contains an invalid entry.");
+      throw new PuzzleDataError("The FiveWink puzzle index contains an invalid entry.");
     }
 
     if (entry.game !== "game1") {
-      throw new PuzzleDataError("A Game 1 puzzle index entry has an invalid game identifier.");
+      throw new PuzzleDataError("A FiveWink puzzle index entry has an invalid game identifier.");
     }
 
     const date = normalizePuzzleDate(entry.date);
@@ -85,7 +85,7 @@ function validatePuzzleIndex(index) {
 
     if (seenDates.has(date) || seenIds.has(entry.id)) {
       throw new PuzzleDataError(
-        "The Game 1 puzzle index contains an ambiguous duplicate date or id: " + date + "."
+        "The FiveWink puzzle index contains an ambiguous duplicate date or id: " + date + "."
       );
     }
 
@@ -240,11 +240,11 @@ export function findPublishedPuzzle(puzzles, date, gameId = "game1") {
 
 export function validateDailyWordRecord(wordRecord, validWords, answerWords, expectedEntry = null) {
   if (!wordRecord || typeof wordRecord !== "object") {
-    throw new PuzzleDataError("The daily Game 1 word record is invalid.");
+    throw new PuzzleDataError("The daily FiveWink word record is invalid.");
   }
 
   if (wordRecord.game !== "game1") {
-    throw new PuzzleDataError("The daily Game 1 word record has an invalid game identifier.");
+    throw new PuzzleDataError("The daily FiveWink word record has an invalid game identifier.");
   }
 
   const date = normalizePuzzleDate(wordRecord.date);
@@ -289,11 +289,11 @@ export function validateDailyWordRecord(wordRecord, validWords, answerWords, exp
 
 export function validateDailyClueRecord(clueRecord, expectedEntry = null) {
   if (!clueRecord || typeof clueRecord !== "object") {
-    throw new PuzzleDataError("The daily Game 1 clue record is invalid.");
+    throw new PuzzleDataError("The daily FiveWink clue record is invalid.");
   }
 
   if (clueRecord.game !== "game1") {
-    throw new PuzzleDataError("The daily Game 1 clue record has an invalid game identifier.");
+    throw new PuzzleDataError("The daily FiveWink clue record has an invalid game identifier.");
   }
 
   const date = normalizePuzzleDate(clueRecord.date);
@@ -327,7 +327,7 @@ export function validateDailyClueRecord(clueRecord, expectedEntry = null) {
 
 /**
  * Combine one daily word file and one daily clue file into the stable puzzle
- * object consumed by Game 1.
+ * object consumed by FiveWink.
  */
 export function combinePuzzleData(date, wordRecord, clueRecord, validWords, answerWords) {
   const targetDate = normalizePuzzleDate(date);
@@ -340,7 +340,7 @@ export function combinePuzzleData(date, wordRecord, clueRecord, validWords, answ
   }
 
   if (word.id !== clues.id || word.id !== "game1-" + targetDate) {
-    throw new PuzzleDataError("Daily word and clue data do not match the same Game 1 puzzle.");
+    throw new PuzzleDataError("Daily word and clue data do not match the same FiveWink puzzle.");
   }
 
   return {
@@ -385,7 +385,7 @@ export async function getPublishedPuzzleForDate(date) {
 
   if (entries.length > 1) {
     throw new PuzzleDataError(
-      "Multiple Game 1 puzzle index entries exist for " + targetDate + "."
+      "Multiple FiveWink puzzle index entries exist for " + targetDate + "."
     );
   }
 
