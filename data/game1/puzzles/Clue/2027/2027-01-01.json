@@ -1,12 +1,7 @@
 {
-  "id": "game1-2026-10-02",
+  "id": "game1-2027-01-01",
   "game": "game1",
-  "date": "2026-10-02",
-  "clues": [
-    "It is a fruit.",
-    "It can be red, green, or yellow.",
-    "It is commonly used in pies.",
-    "Its name begins with A.",
-    "It has five letters."
-  ]
+  "date": "2027-01-01",
+  "storage": "cloudflare-d1",
+  "message": "Private FiveWink clue data migrated to Cloudflare D1."
 }
