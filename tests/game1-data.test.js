@@ -9,6 +9,9 @@ import {
   findPublishedPuzzle,
   getPublishedPuzzleForDate,
   loadGame1Data,
+  validateClueData,
+  validateScheduleData,
+  combinePuzzleData,
   validatePuzzleRecord
 } from "../js/services/puzzle-service.js";
 
@@ -38,14 +41,24 @@ for (const word of ["EMACS", "NIMBY", "CCITT", "ACCRA", "ZILLA", "ADMRX", "APPMT
 assert(data.puzzleIndex.game === "game1", "Puzzle archive index must be for Game 1.");
 assert(
   data.puzzleIndex.puzzles.every((entry) =>
-    entry.path === entry.date.slice(0, 4) + "/" + entry.date + ".json"
+    entry.schedulePath === "schedule/" + entry.date.slice(0, 4) + ".json" &&
+    entry.cluePath === "clues/" + entry.date.slice(0, 4) + ".json"
   ),
-  "Every archive entry must use the canonical date-based file path."
+  "Every archive entry must use the canonical yearly schedule and clue paths."
 );
+assert(data.puzzleIndex.puzzles.length === 6, "All six existing Game 1 dates must remain indexed.");
 
 const today = await getPublishedPuzzleForDate("2026-10-03");
-assert(today?.answer === "HOUSE", "Published puzzle for October 3 should load from its date file.");
-assert(today?.clues.length === 5, "Today's puzzle clues must come from puzzle data.");
+assert(today?.answer === "HOUSE", "Published puzzle for October 3 should load from the split schedule/clue data.");
+assert(today?.clues.length === 5, "Today's puzzle must combine exactly five clues.");
+assert(
+  today?.clues[0] === "People live in it." &&
+  today?.clues[4] === "It is a place to live.",
+  "October 3 clues must remain in their original order."
+);
+
+const october2 = await getPublishedPuzzleForDate("2026-10-02");
+assert(october2?.answer === "APPLE", "October 2 must preserve its migrated answer.");
 
 assert(
   await getPublishedPuzzleForDate("2026-10-05") === null,
@@ -63,6 +76,101 @@ assert(
   await getPublishedPuzzleForDate("2026-12-31") === null,
   "Missing date must return no puzzle instead of a fallback."
 );
+
+
+// Split-data validation checks.
+const validSchedule = validateScheduleData(
+  {
+    game: "game1",
+    year: 2026,
+    puzzles: {
+      "2026-10-08": { answer: "HOUSE", status: PUZZLE_STATUS.DRAFT }
+    }
+  },
+  2026
+);
+const validClues = validateClueData(
+  {
+    game: "game1",
+    year: 2026,
+    puzzles: {
+      "2026-10-08": {
+        id: "game1-2026-10-08",
+        clues: ["1", "2", "3", "4", "5"]
+      }
+    }
+  },
+  2026
+);
+const combined = combinePuzzleData(
+  "2026-10-08",
+  validSchedule.puzzles["2026-10-08"],
+  validClues.puzzles["2026-10-08"],
+  data.validWords,
+  data.answerWords
+);
+assert(combined.answer === "HOUSE", "Schedule answer must be used by the combined puzzle.");
+assert(combined.clues[0] === "1" && combined.clues.length === 5, "Clue data must be used by the combined puzzle.");
+
+for (const badCombination of [
+  {
+    schedule: validSchedule.puzzles["2026-10-08"],
+    clues: null,
+    message: "Missing clue data must fail clearly."
+  },
+  {
+    schedule: null,
+    clues: validClues.puzzles["2026-10-08"],
+    message: "Missing scheduled answer must fail clearly."
+  },
+  {
+    schedule: validSchedule.puzzles["2026-10-08"],
+    clues: { id: "game1-2026-10-09", clues: ["1", "2", "3", "4", "5"] },
+    message: "Clue data for a different date must fail clearly."
+  }
+]) {
+  let threw = false;
+  try {
+    combinePuzzleData(
+      "2026-10-08",
+      badCombination.schedule,
+      badCombination.clues,
+      data.validWords,
+      data.answerWords
+    );
+  } catch (error) {
+    threw = true;
+  }
+  assert(threw, badCombination.message);
+}
+
+for (const badSchedule of [
+  { game: "game1", year: 2026, puzzles: { "2026-10-08": { answer: "", status: "draft" } } },
+  { game: "game1", year: 2026, puzzles: { "2026-02-30": { answer: "HOUSE", status: "draft" } } },
+  { game: "other-game", year: 2026, puzzles: {} }
+]) {
+  let threw = false;
+  try {
+    validateScheduleData(badSchedule, 2026);
+  } catch (error) {
+    threw = true;
+  }
+  assert(threw, "Malformed schedule data must fail clearly.");
+}
+
+for (const badClueData of [
+  { game: "game1", year: 2026, puzzles: { "2026-10-08": { id: "game1-2026-10-09", clues: ["1", "2", "3", "4", "5"] } } },
+  { game: "game1", year: 2026, puzzles: { "2026-10-08": { id: "game1-2026-10-08", clues: ["1", "2"] } } },
+  { game: "other-game", year: 2026, puzzles: {} }
+]) {
+  let threw = false;
+  try {
+    validateClueData(badClueData, 2026);
+  } catch (error) {
+    threw = true;
+  }
+  assert(threw, "Malformed clue data must fail clearly.");
+}
 
 const conflictingDate = [
   {
