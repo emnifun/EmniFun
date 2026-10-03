@@ -4,6 +4,7 @@ import {
   GAME1_RESULT,
   buildPlayerHistoryRecord,
   createGame1State,
+  getNextNormalAttemptIndex,
   isValidGuess,
   sanitizeGuessInput,
   submitNormalGuess,
@@ -183,7 +184,7 @@ export async function renderGame1(container) {
     const rows = Array.from({ length: GAME1_CONFIG.normalAttempts }, (_, index) => {
       const guess = state.guesses[index] || "";
       const feedback = state.feedback[index];
-      const isCurrent = state.status === "playing" && index === state.attemptNumber - 1;
+      const isCurrent = state.status === "playing" && index === getNextNormalAttemptIndex(state);
 
       const cells = Array.from({ length: 5 }, (_, letterIndex) => {
         const value = guess[letterIndex] || (isCurrent ? currentInput[letterIndex] || "" : "");
@@ -222,7 +223,7 @@ export async function renderGame1(container) {
       const action =
         status === "available" &&
         state.status === "playing" &&
-        state.attemptNumber === number
+        state.attempts[index] === null
           ? `<button class="button secondary clue-action" data-clue="${number}" type="button">Use Clue #${number}</button>`
           : "";
 
