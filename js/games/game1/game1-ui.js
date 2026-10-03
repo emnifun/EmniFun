@@ -61,9 +61,16 @@ export async function renderGame1(container) {
         <button class="button secondary" type="button" id="game1-back">Back to Games</button>
       </div>
       <div id="game1-message" class="game-message" aria-live="polite"></div>
-      <div id="game1-board" class="game-board"></div>
-      <div id="game1-clues" class="clue-list"></div>
-      <div id="game1-keyboard" class="keyboard" aria-label="On-screen keyboard"></div>
+      <div class="game1-layout">
+        <div class="game1-play-area">
+          <div id="game1-board" class="game-board"></div>
+          <div id="game1-keyboard" class="keyboard" aria-label="On-screen keyboard"></div>
+        </div>
+        <details id="game1-clues-panel" class="game1-clues-panel">
+          <summary>Clues</summary>
+          <div id="game1-clues" class="clue-list"></div>
+        </details>
+      </div>
       <div id="game1-result"></div>
       <button class="button secondary hidden" id="game1-see-why" type="button">See Why</button>
       <div id="game1-explanation"></div>
@@ -74,10 +81,20 @@ export async function renderGame1(container) {
   const board = container.querySelector("#game1-board");
   const clues = container.querySelector("#game1-clues");
   const keyboard = container.querySelector("#game1-keyboard");
+  const cluesPanel = container.querySelector("#game1-clues-panel");
   const messageBox = container.querySelector("#game1-message");
   const resultBox = container.querySelector("#game1-result");
   const seeWhyButton = container.querySelector("#game1-see-why");
   let messageTimeout = null;
+
+  function syncCluePanelForViewport() {
+    cluesPanel.open = !window.matchMedia("(max-width: 800px)").matches;
+  }
+
+  syncCluePanelForViewport();
+  const clueMediaQuery = window.matchMedia("(max-width: 800px)");
+  const handleClueViewportChange = () => syncCluePanelForViewport();
+  clueMediaQuery.addEventListener?.("change", handleClueViewportChange);
 
   function showMessage(message = "", temporary = false) {
     if (messageTimeout) {
@@ -109,15 +126,23 @@ export async function renderGame1(container) {
   }
 
   function renderResult() {
+    const seventhGuess = state.guesses[GAME1_CONFIG.normalAttempts];
+    const seventhGuessWasRight =
+      state.result === GAME1_RESULT.FAILED_CLOSE &&
+      seventhGuess &&
+      seventhGuess === state.answer;
+
     const labels = {
       [GAME1_RESULT.SOLVED]: "Solved!",
-      [GAME1_RESULT.FAILED_CLOSE]: "Failed — Close",
+      [GAME1_RESULT.FAILED_CLOSE]: seventhGuessWasRight ? "7th Guess Was Right!" : "Failed — Close",
       [GAME1_RESULT.FAILED_HARD]: "Failed — Hard"
     };
 
     const details = {
       [GAME1_RESULT.SOLVED]: "Solved within the six normal attempts.",
-      [GAME1_RESULT.FAILED_CLOSE]: "The seventh guess was close, but it does not count as a solve.",
+      [GAME1_RESULT.FAILED_CLOSE]: seventhGuessWasRight
+        ? "Your 7th guess was right — but it does not count as a solve."
+        : "The seventh guess was close, but it does not count as a solve.",
       [GAME1_RESULT.FAILED_HARD]: "The puzzle was not solved within the normal attempts."
     };
 
@@ -185,10 +210,16 @@ export async function renderGame1(container) {
 
     currentInput = "";
 
+    const seventhGuessWasRight =
+      result.result === GAME1_RESULT.FAILED_CLOSE &&
+      state.guesses[GAME1_CONFIG.normalAttempts] === state.answer;
+
     showMessage(
-      result.result === GAME1_RESULT.FAILED_CLOSE
-        ? "Your final guess was close."
-        : "Your final guess was not close enough."
+      seventhGuessWasRight
+        ? "Your 7th guess was right — but it does not count as a solve."
+        : result.result === GAME1_RESULT.FAILED_CLOSE
+          ? "Your final guess was close."
+          : "Your final guess was not close enough."
     );
     renderBoard();
     finishGame();
@@ -225,7 +256,12 @@ export async function renderGame1(container) {
       (state.status === "awaiting-seventh" || state.seventhGuessUsed)
         ? `
           <div class="seventh-stage">
-            <div class="close-banner">You failed — but are you close?</div>
+            <div class="close-banner">${
+              state.result === GAME1_RESULT.FAILED_CLOSE &&
+              state.guesses[GAME1_CONFIG.normalAttempts] === state.answer
+                ? "Your 7th guess was right — but it does not count as a solve."
+                : "You failed — but are you close?"
+            }</div>
             <div class="game-row seventh-row${state.status === "awaiting-seventh" ? " active" : ""}" aria-current="${state.status === "awaiting-seventh" ? "true" : "false"}">
               ${Array.from({ length: 5 }, (_, index) => {
                 const value =
@@ -343,12 +379,18 @@ export async function renderGame1(container) {
   seeWhyButton.addEventListener("click", () => {
     if (state.status !== "finished") return;
 
+    const seventhGuessWasRight =
+      state.result === GAME1_RESULT.FAILED_CLOSE &&
+      state.guesses[GAME1_CONFIG.normalAttempts] === state.answer;
+
     const context =
       state.result === GAME1_RESULT.SOLVED
         ? "You solved the puzzle. Here is the clue-to-answer explanation."
-        : state.result === GAME1_RESULT.FAILED_CLOSE
-          ? "You were close, but the seventh guess remains a failure result."
-          : "The puzzle ended as a hard failure. Here is the full explanation.";
+        : seventhGuessWasRight
+          ? "Your 7th guess matched the answer, but the seventh guess does not count as a solve."
+          : state.result === GAME1_RESULT.FAILED_CLOSE
+            ? "You were close, but the seventh guess remains a failure result."
+            : "The puzzle ended as a hard failure. Here is the full explanation.";
 
     container.querySelector("#game1-explanation").innerHTML = `
       <div class="explanation-card" id="explanation-card">
