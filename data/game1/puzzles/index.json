@@ -1,0 +1,6 @@
+{
+  "description": "FiveWink puzzle archive storage moved to private Cloudflare D1.",
+  "game": "game1",
+  "storage": "cloudflare-d1",
+  "publicFiles": false
+}
