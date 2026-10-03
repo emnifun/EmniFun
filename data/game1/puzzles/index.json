@@ -1,0 +1,42 @@
+{
+  "description": "Directory index for the date-based Game 1 puzzle archive. Full puzzle content lives in the individual date files.",
+  "game": "game1",
+  "puzzles": [
+    {
+      "id": "game1-2026-10-02",
+      "game": "game1",
+      "date": "2026-10-02",
+      "path": "2026/2026-10-02.json"
+    },
+    {
+      "id": "game1-2026-10-03",
+      "game": "game1",
+      "date": "2026-10-03",
+      "path": "2026/2026-10-03.json"
+    },
+    {
+      "id": "game1-2026-10-04",
+      "game": "game1",
+      "date": "2026-10-04",
+      "path": "2026/2026-10-04.json"
+    },
+    {
+      "id": "game1-2026-10-05",
+      "game": "game1",
+      "date": "2026-10-05",
+      "path": "2026/2026-10-05.json"
+    },
+    {
+      "id": "game1-2026-10-06",
+      "game": "game1",
+      "date": "2026-10-06",
+      "path": "2026/2026-10-06.json"
+    },
+    {
+      "id": "game1-2026-10-07",
+      "game": "game1",
+      "date": "2026-10-07",
+      "path": "2026/2026-10-07.json"
+    }
+  ]
+}

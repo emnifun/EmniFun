@@ -1,63 +1,160 @@
 # Game 1 data
 
-This folder contains the local data used by the Game 1 prototype.
+Game 1 keeps three separate kinds of data:
 
-## valid-guesses.json
+1. **Guess vocabulary** — every five-letter word that Game 1 accepts as a guess.
+2. **Answer candidates** — the smaller curated set of words that are suitable to become answers.
+3. **Puzzle archive** — the actual date-based puzzles that you create.
 
-This is the comprehensive accepted player-guess vocabulary.
+Changing one does not automatically generate or schedule another.
 
-Current generated size: 16,273 unique five-letter A-Z entries. There is no artificial maximum and no fixed target size.
+## Guess vocabulary
 
-The generator combines selected high-quality lexical sources and filters obvious source-marked non-standard entries. It does not manually type the vocabulary.
+File:
 
-### Sources
+`data/game1/vocabulary/valid-guesses.json`
 
-Moby Words II
+This is the comprehensive accepted player-guess vocabulary. The current generated dataset contains **16,273 unique five-letter A-Z entries**.
 
-- single_5az.txt - broad five-letter single-word base.
-- crosswd.txt and crswd-d.txt - supplementary established crossword vocabulary, including legitimate inflected forms.
-- names.txt and places.txt - source classification lists for proper-name/place filtering.
-- acronyms.txt - source classification for acronyms and abbreviations.
-- common.txt - corroboration source for obvious malformed or short-form-like entries.
-- Repository: https://github.com/fordsfords/moby_words_2
+There is no artificial maximum and no fixed target size. A word does not have to be a daily answer to be accepted as a guess.
 
-Wordnik Wordlist
+Regenerate it with:
 
-- wordlist-20210729.txt - independent supplementary English wordlist.
-- Repository: https://github.com/wordnik/wordlist
+```
+node scripts/generate-game1-vocabulary.mjs
+```
 
-### Filtering
+The browser never calls a dictionary API. It loads this local generated file.
 
-1. Normalize entries to lowercase.
-2. Keep exactly five ASCII letters A-Z.
-3. Deduplicate the combined candidate set.
-4. Exclude source-flagged proper names, places, acronyms, and abbreviations unless established Moby crossword vocabulary independently supports the lexicalized English word.
-5. Remove only unmistakable malformed or short-form-like Moby entries when they also lack independent lexical corroboration.
-6. Preserve legitimate uncommon, archaic, variant, and inflected English words when the selected sources support them.
-7. Never cap the vocabulary by a target number.
+## Answer candidates
 
-## answers.json
+File:
 
-This is the separate curated daily-answer pool. Every answer must also exist in valid-guesses.json.
+`data/game1/vocabulary/answers.json`
 
-A rare legitimate word may be accepted as a guess without being eligible for daily selection.
+This contains the current curated pool of approximately **182 answer candidates**.
 
-## puzzles.json
+These are only eligible answer words. They are **not** the daily schedule, and the program does not cycle through them automatically.
 
-This contains the dated puzzle records. Each record includes an id, game, date, answer, five clues, and status.
+Every answer candidate should also exist in `valid-guesses.json`.
 
-Supported status values are draft, scheduled, published, and archived.
+## Puzzle archive
 
-The public game selects only the published Game 1 puzzle for the requested date.
+Folder:
 
-## Regenerating the vocabulary
+`data/game1/puzzles/`
 
-From the repository root:
+Each actual puzzle is stored in its own date-based file:
 
-    node scripts/generate-game1-vocabulary.mjs
+```
+data/
+└── game1/
+    ├── vocabulary/
+    │   ├── valid-guesses.json
+    │   └── answers.json
+    │
+    └── puzzles/
+        ├── index.json
+        ├── README.md
+        └── 2026/
+            ├── 2026-10-02.json
+            ├── 2026-10-03.json
+            └── ...
+```
 
-The browser does not run this generator. It only loads the generated local JSON.
+The archive index only tells the service which date files exist. The complete puzzle content stays in the date file itself.
 
-## Static-site limitation
+## Puzzle record
 
-Because the prototype ships puzzles.json to the browser, future puzzle answers are not secret. Backend storage should be introduced before production if unreleased puzzle answers must remain private.
+A puzzle file looks like this:
+
+```json
+{
+  "id": "game1-2026-10-04",
+  "game": "game1",
+  "date": "2026-10-04",
+  "answer": "TRAIN",
+  "clues": [
+    "It travels on tracks.",
+    "It carries passengers or goods.",
+    "It often has many carriages.",
+    "It stops at stations.",
+    "It has five letters."
+  ],
+  "status": "draft"
+}
+```
+
+Dates always use **YYYY-MM-DD**.
+
+Supported statuses are:
+
+- `draft` — being prepared; never selected for normal play.
+- `published` — the official puzzle for that date.
+- `unpublished` — intentionally unavailable for normal play.
+- `archived` — historical puzzle; kept permanently but not playable as the active daily puzzle.
+
+For one date, the service allows zero or one published puzzle. If two published records are present for the same Game 1 date, the service throws a clear data error instead of choosing one.
+
+## Today's puzzle
+
+Game 1 asks the puzzle service for the current date.
+
+The UI does not contain answers such as APPLE, HOUSE, or TRAIN.
+
+The service:
+
+1. resolves today's date as YYYY-MM-DD;
+2. checks the puzzle archive index for that date;
+3. loads the matching date file(s);
+4. validates each record;
+5. selects the single published Game 1 puzzle.
+
+If no puzzle exists or none is published, the game shows an unavailable state. It does not use yesterday's puzzle, tomorrow's puzzle, a fallback answer, or an invented puzzle.
+
+## Manual workflow
+
+To create tomorrow's puzzle:
+
+1. Create the date file, for example:
+   `data/game1/puzzles/2026/2026-10-04.json`
+2. Put in the id, game, date, answer, five clues, and `"status": "draft"`.
+3. Make sure the answer exists in both `answers.json` and `valid-guesses.json`.
+4. Add the matching file entry to `data/game1/puzzles/index.json`.
+5. Preview/test the puzzle.
+6. Change only the puzzle's status to `"published"` when it is ready.
+7. Commit and push the change.
+
+You do **not** need to edit Game 1 UI or Game 1 logic to create a daily puzzle.
+
+To take a puzzle offline, change `published` to `unpublished`. To retain it as history, use `archived`.
+
+## Static-site privacy limitation
+
+This is a public static-site architecture. Any puzzle JSON that is checked into and shipped from a public GitHub repository can be inspected by users, even when its status is `draft` or `unpublished`.
+
+So status controls **normal gameplay selection**, not secrecy.
+
+Before production, unreleased puzzle data should live in a private backend/database. The public frontend should receive only the currently published puzzle.
+
+## Future admin/backend
+
+The puzzle record in these JSON files is already the conceptual data entity that a future admin dashboard and database can use.
+
+Today:
+
+```
+Game 1 → Puzzle Service → Local JSON
+```
+
+Later:
+
+```
+Game 1 → Puzzle Service → Backend API → Database
+                              ↑
+                       Admin Dashboard
+```
+
+The Game 1 UI and rules can continue using the same service functions and puzzle fields. The storage implementation can change without redesigning the puzzle record or rewriting the game.
+
+Game 2 and Game 3 keep their own data structures. Nothing here requires future games to use Game 1's five-letter puzzle schema.
