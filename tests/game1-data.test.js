@@ -9,8 +9,8 @@ import {
   findPublishedPuzzle,
   getPublishedPuzzleForDate,
   loadGame1Data,
-  validateClueData,
-  validateScheduleData,
+  validateDailyWordRecord,
+  validateDailyClueRecord,
   combinePuzzleData,
   validatePuzzleRecord
 } from "../js/services/puzzle-service.js";
@@ -41,10 +41,10 @@ for (const word of ["EMACS", "NIMBY", "CCITT", "ACCRA", "ZILLA", "ADMRX", "APPMT
 assert(data.puzzleIndex.game === "game1", "Puzzle archive index must be for Game 1.");
 assert(
   data.puzzleIndex.puzzles.every((entry) =>
-    entry.schedulePath === "schedule/" + entry.date.slice(0, 4) + ".json" &&
-    entry.cluePath === "clues/" + entry.date.slice(0, 4) + ".json"
+    entry.wordPath === "words/" + entry.date.slice(0, 4) + "/" + entry.date + ".json" &&
+    entry.cluePath === "clues/" + entry.date.slice(0, 4) + "/" + entry.date + ".json"
   ),
-  "Every archive entry must use the canonical yearly schedule and clue paths."
+  "Every archive entry must use the canonical date-wise word and clue paths."
 );
 assert(data.puzzleIndex.puzzles.length === 6, "All six existing Game 1 dates must remain indexed.");
 
@@ -78,99 +78,101 @@ assert(
 );
 
 
-// Split-data validation checks.
-const validSchedule = validateScheduleData(
+// Date-wise daily file validation checks.
+const validWord = validateDailyWordRecord(
   {
+    id: "game1-2026-10-08",
     game: "game1",
-    year: 2026,
-    puzzles: {
-      "2026-10-08": { answer: "HOUSE", status: PUZZLE_STATUS.DRAFT }
-    }
+    date: "2026-10-08",
+    answer: "HOUSE",
+    status: PUZZLE_STATUS.DRAFT
   },
-  2026
-);
-const validClues = validateClueData(
+  data.validWords,
+  data.answerWords,
   {
+    id: "game1-2026-10-08",
     game: "game1",
-    year: 2026,
-    puzzles: {
-      "2026-10-08": {
-        id: "game1-2026-10-08",
-        clues: ["1", "2", "3", "4", "5"]
-      }
-    }
-  },
-  2026
+    date: "2026-10-08",
+    wordPath: "words/2026/2026-10-08.json",
+    cluePath: "clues/2026/2026-10-08.json"
+  }
 );
+assert(validWord.answer === "HOUSE", "Daily word file should validate its answer.");
+
+const validClue = validateDailyClueRecord(
+  {
+    id: "game1-2026-10-08",
+    game: "game1",
+    date: "2026-10-08",
+    clues: ["1", "2", "3", "4", "5"]
+  },
+  {
+    id: "game1-2026-10-08",
+    game: "game1",
+    date: "2026-10-08",
+    wordPath: "words/2026/2026-10-08.json",
+    cluePath: "clues/2026/2026-10-08.json"
+  }
+);
+assert(validClue.clues.length === 5, "Daily clue file should validate exactly five clues.");
+
 const combined = combinePuzzleData(
   "2026-10-08",
-  validSchedule.puzzles["2026-10-08"],
-  validClues.puzzles["2026-10-08"],
+  validWord,
+  validClue,
   data.validWords,
   data.answerWords
 );
-assert(combined.answer === "HOUSE", "Schedule answer must be used by the combined puzzle.");
-assert(combined.clues[0] === "1" && combined.clues.length === 5, "Clue data must be used by the combined puzzle.");
+assert(combined.answer === "HOUSE", "Daily word file must supply the combined answer.");
+assert(combined.clues[0] === "1" && combined.clues.length === 5, "Daily clue file must supply the combined clues.");
 
-for (const badCombination of [
-  {
-    schedule: validSchedule.puzzles["2026-10-08"],
-    clues: null,
-    message: "Missing clue data must fail clearly."
-  },
-  {
-    schedule: null,
-    clues: validClues.puzzles["2026-10-08"],
-    message: "Missing scheduled answer must fail clearly."
-  },
-  {
-    schedule: validSchedule.puzzles["2026-10-08"],
-    clues: { id: "game1-2026-10-09", clues: ["1", "2", "3", "4", "5"] },
-    message: "Clue data for a different date must fail clearly."
-  }
+for (const badWord of [
+  null,
+  { id: "game1-2026-10-09", game: "game1", date: "2026-10-08", answer: "HOUSE", status: PUZZLE_STATUS.DRAFT },
+  { id: "game1-2026-10-08", game: "game1", date: "2026-10-08", answer: "NOT5", status: PUZZLE_STATUS.DRAFT }
 ]) {
   let threw = false;
   try {
-    combinePuzzleData(
-      "2026-10-08",
-      badCombination.schedule,
-      badCombination.clues,
-      data.validWords,
-      data.answerWords
-    );
+    validateDailyWordRecord(badWord, data.validWords, data.answerWords);
   } catch (error) {
-    threw = true;
+    threw = error instanceof PuzzleDataError;
   }
-  assert(threw, badCombination.message);
+  assert(threw, "Malformed daily word file must fail clearly.");
 }
 
-for (const badSchedule of [
-  { game: "game1", year: 2026, puzzles: { "2026-10-08": { answer: "", status: "draft" } } },
-  { game: "game1", year: 2026, puzzles: { "2026-02-30": { answer: "HOUSE", status: "draft" } } },
-  { game: "other-game", year: 2026, puzzles: {} }
+for (const badClue of [
+  null,
+  { id: "game1-2026-10-09", game: "game1", date: "2026-10-08", clues: ["1", "2", "3", "4", "5"] },
+  { id: "game1-2026-10-08", game: "game1", date: "2026-10-08", clues: ["1", "2"] },
+  { id: "game1-2026-10-08", game: "game1", date: "2026-10-08", clues: ["1", "", "3", "4", "5"] }
 ]) {
   let threw = false;
   try {
-    validateScheduleData(badSchedule, 2026);
+    validateDailyClueRecord(badClue);
   } catch (error) {
-    threw = true;
+    threw = error instanceof PuzzleDataError;
   }
-  assert(threw, "Malformed schedule data must fail clearly.");
+  assert(threw, "Malformed daily clue file must fail clearly.");
 }
 
-for (const badClueData of [
-  { game: "game1", year: 2026, puzzles: { "2026-10-08": { id: "game1-2026-10-09", clues: ["1", "2", "3", "4", "5"] } } },
-  { game: "game1", year: 2026, puzzles: { "2026-10-08": { id: "game1-2026-10-08", clues: ["1", "2"] } } },
-  { game: "other-game", year: 2026, puzzles: {} }
-]) {
-  let threw = false;
-  try {
-    validateClueData(badClueData, 2026);
-  } catch (error) {
-    threw = true;
-  }
-  assert(threw, "Malformed clue data must fail clearly.");
+let mismatchDetected = false;
+try {
+  combinePuzzleData(
+    "2026-10-08",
+    validWord,
+    {
+      id: "game1-2026-10-09",
+      game: "game1",
+      date: "2026-10-09",
+      clues: ["1", "2", "3", "4", "5"]
+    },
+    data.validWords,
+    data.answerWords
+  );
+} catch (error) {
+  mismatchDetected = error instanceof PuzzleDataError;
 }
+assert(mismatchDetected, "A clue file for a different date must fail clearly.");
 
 const conflictingDate = [
   {
