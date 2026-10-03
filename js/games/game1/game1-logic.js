@@ -140,6 +140,11 @@ export function useClue(state, clueNumber) {
   }
 
   const attemptIndex = clueNumber - 1;
+  const currentAttemptIndex = getNextNormalAttemptIndex(state);
+
+  if (currentAttemptIndex === -1 || clueNumber !== currentAttemptIndex + 1) {
+    return { ok: false, message: "That clue is not available on this attempt." };
+  }
 
   if (state.clues[attemptIndex] !== "available") {
     return { ok: false, message: "That clue is no longer available." };
