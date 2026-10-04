@@ -63,3 +63,19 @@ The signed token identifies a server-side D1 session. The session row stores the
 The repository does not contain the private D1 puzzle seed data. Create the D1 rows in Cloudflare after creating the database.
 
 Do not add answer JSON files back into this public repository.
+
+Authentication is additive to FiveWink and uses separate account sessions. The
+existing FiveWink GAME_TOKEN_SECRET and signed game token remain dedicated to
+FiveWink gameplay.
+
+The Worker requires RECOVERY_VAULT_SECRET as a Cloudflare Worker Secret.
+Set GOOGLE_CLIENT_ID, AUTH_ALLOWED_ORIGIN, and the configurable auth TTL/cooldown
+settings as nonsecret Worker variables. RECOVERY_KEY_VISIBILITY_SECONDS must be
+explicitly configured before authentication can serve requests; its exact business
+duration is intentionally not hardcoded in source. The Rate Limiting bindings
+AUTH_RATE_LIMITER, AUTH_CHALLENGE_RATE_LIMITER, and RECOVERY_RATE_LIMITER are
+required for authentication endpoints; the Worker fails closed if a binding is absent.
+
+No production account rows are seeded by the repository. Apply the auth D1
+migration separately before deployment.
+
