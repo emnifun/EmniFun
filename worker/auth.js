@@ -998,7 +998,6 @@ async function handleMe(request, env, config) {
   if (!session) {
     return jsonResponse({ ok: true, user: null }, 200, config);
   }
-
   return jsonResponse(
     { ok: true, user: publicAccount(session) },
     200,
