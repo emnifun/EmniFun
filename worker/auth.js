@@ -998,3 +998,593 @@ async function handleMe(request, env, config) {
   if (!session) {
     return jsonResponse({ ok: true, user: null }, 200, config);
   }
+
+  return jsonResponse(
+    { ok: true, user: publicAccount(session) },
+    200,
+    config
+  );
+}
+
+async function handleLogout(request, env, config) {
+  if (!assertAllowedOrigin(request, config)) return invalidAuthResponse(config, 403);
+
+  const token = parseCookies(request)[AUTH_COOKIE_NAME];
+  if (token) {
+    const hash = await sessionTokenHash(token);
+    await env.DB.prepare(
+      `UPDATE auth_sessions SET revoked_at = ?1
+        WHERE token_hash = ?2 AND revoked_at IS NULL`
+    )
+      .bind(Math.floor(Date.now() / 1000), hash)
+      .run();
+  }
+
+  const response = jsonResponse({ ok: true }, 200, config);
+  response.headers.append(
+    "Set-Cookie",
+    sessionCookie("", config, 0)
+  );
+  return response;
+}
+
+async function handleRecoveryVerify(request, env, config) {
+  if (!assertAllowedOrigin(request, config)) return genericRecoveryFailure(config, 403);
+
+  const body = await parseJsonBody(request);
+  const gamerTagCanonical = gamerTagKey(body?.gamerTag);
+  const recoveryKey = String(body?.recoveryKey ?? "").trim();
+  const googleNonce = String(body?.googleNonce ?? "");
+
+  if (
+    !gamerTagCanonical ||
+    !RECOVERY_KEY_PATTERN.test(recoveryKey) ||
+    !/^[A-Za-z0-9_-]{20,256}$/.test(googleNonce)
+  ) {
+    return genericRecoveryFailure(config);
+  }
+
+  const account = await env.DB.prepare(
+    `SELECT emnifeed_id, gamer_tag, google_changed_at
+       FROM accounts
+      WHERE gamer_tag_key = ?1
+      LIMIT 1`
+  )
+    .bind(gamerTagCanonical)
+    .first();
+
+  const lookupEmnifeedId = account?.emnifeed_id || DUMMY_EMNIFEED_ID;
+  const keys = await env.DB.prepare(
+    `SELECT recovery_key_id, slot, version, crypto_version, key_hash
+       FROM recovery_keys
+      WHERE emnifeed_id = ?1
+      ORDER BY slot ASC
+      LIMIT 2`
+  )
+    .bind(lookupEmnifeedId)
+    .all();
+
+  const rows = keys.results || [];
+  let matchedKey = null;
+
+  for (let index = 0; index < 2; index += 1) {
+    const row = rows[index];
+    const secretVersion = row?.crypto_version || 1;
+    const secret = getRecoveryVaultSecret(env, secretVersion);
+    const targetId = row ? lookupEmnifeedId : DUMMY_EMNIFEED_ID;
+    const suppliedHash = await hashRecoveryKey(
+      targetId,
+      recoveryKey,
+      secret,
+      secretVersion
+    );
+    const suppliedBytes = base64UrlDecode(suppliedHash);
+    const expectedBytes = row ? base64UrlDecode(row.key_hash) : new Uint8Array(32);
+
+    if (bytesEqual(expectedBytes, suppliedBytes) && row && !matchedKey) {
+      matchedKey = row;
+    }
+  }
+
+  if (!account || !matchedKey) return genericRecoveryFailure(config);
+
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    account.google_changed_at !== null &&
+    Number.isInteger(account.google_changed_at) &&
+    now - account.google_changed_at < config.googleChangeCooldownSeconds
+  ) {
+    return genericRecoveryFailure(config);
+  }
+
+  const challenge = await createChallenge(env, {
+    purpose: "recovery",
+    emnifeedId: account.emnifeed_id,
+    recoveryKeyId: matchedKey.recovery_key_id,
+    recoveryKeyVersion: matchedKey.version,
+    nonce: googleNonce,
+    config
+  });
+
+  return jsonResponse(
+    {
+      ok: true,
+      recoveryChallenge: challenge.challengeId
+    },
+    200,
+    config
+  );
+}
+async function handleRecoveryComplete(request, env, config) {
+  if (!assertAllowedOrigin(request, config)) return genericRecoveryFailure(config, 403);
+
+  const body = await parseJsonBody(request);
+  const challenge = await getChallenge(env, body?.recoveryChallenge);
+  if (!challenge || challenge.purpose !== "recovery" || !challenge.emnifeed_id || !challenge.recovery_key_id) {
+    return genericRecoveryFailure(config);
+  }
+
+  const nonce = await recoverNonceFromHashOnlyChallenge(body?.credential, challenge);
+  if (!nonce) return genericRecoveryFailure(config);
+
+  let googleIdentity;
+  try {
+    googleIdentity = await verifyGoogleIdToken(
+      body?.credential,
+      nonce,
+      config.googleClientId
+    );
+  } catch {
+    return genericRecoveryFailure(config);
+  }
+
+  const account = await env.DB.prepare(
+    `SELECT emnifeed_id, gamer_tag, google_changed_at
+       FROM accounts
+      WHERE emnifeed_id = ?1
+      LIMIT 1`
+  )
+    .bind(challenge.emnifeed_id)
+    .first();
+
+  if (!account) return genericRecoveryFailure(config);
+
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    account.google_changed_at !== null &&
+    Number.isInteger(account.google_changed_at) &&
+    now - account.google_changed_at < config.googleChangeCooldownSeconds
+  ) {
+    return genericRecoveryFailure(config);
+  }
+
+  const currentGoogle = await env.DB.prepare(
+    `SELECT google_sub FROM google_identities WHERE emnifeed_id = ?1 LIMIT 1`
+  )
+    .bind(account.emnifeed_id)
+    .first();
+
+  if (currentGoogle?.google_sub === googleIdentity.sub) {
+    return genericRecoveryFailure(config);
+  }
+
+  const existingGoogle = await env.DB.prepare(
+    `SELECT emnifeed_id FROM google_identities WHERE google_sub = ?1 LIMIT 1`
+  )
+    .bind(googleIdentity.sub)
+    .first();
+
+  if (existingGoogle && existingGoogle.emnifeed_id !== account.emnifeed_id) {
+    return genericRecoveryFailure(config);
+  }
+
+  const currentKey = await env.DB.prepare(
+    `SELECT recovery_key_id, emnifeed_id, slot, version, crypto_version
+       FROM recovery_keys
+      WHERE recovery_key_id = ?1
+        AND emnifeed_id = ?2
+      LIMIT 1`
+  )
+    .bind(challenge.recovery_key_id, account.emnifeed_id)
+    .first();
+
+  if (!currentKey || currentKey.version !== challenge.recovery_key_version) {
+    return genericRecoveryFailure(config);
+  }
+
+  const replacementKey = generateRecoveryKey();
+  const replacementVersion = currentKey.version + 1;
+  const replacementSecretVersion = config.recoveryVaultSecretVersion;
+  const replacementSecret = getRecoveryVaultSecret(env, replacementSecretVersion);
+  const replacementHash = await hashRecoveryKey(
+    account.emnifeed_id,
+    replacementKey,
+    replacementSecret,
+    replacementSecretVersion
+  );
+  const replacementEncrypted = await encryptRecoveryKey({
+    emnifeedId: account.emnifeed_id,
+    slot: currentKey.slot,
+    version: replacementVersion,
+    recoveryKey: replacementKey,
+    secret: replacementSecret,
+    secretVersion: replacementSecretVersion
+  });
+
+  const sessionToken = generateOpaqueToken();
+  const tokenHash = await sessionTokenHash(sessionToken);
+  const sessionId = crypto.randomUUID();
+  const expiresAt = now + config.sessionTtlSeconds;
+  const recoveryLockToken = crypto.randomUUID();
+  const recoveryLockUntil = now + RECOVERY_LOCK_TTL_SECONDS;
+  const cooldownCutoff = now - config.googleChangeCooldownSeconds;
+
+  try {
+    const batchResults = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE accounts
+            SET recovery_lock_token = ?1,
+                recovery_lock_until = ?2
+          WHERE emnifeed_id = ?3
+            AND (recovery_lock_token IS NULL OR recovery_lock_until IS NULL OR recovery_lock_until <= ?4)
+            AND (google_changed_at IS NULL OR google_changed_at <= ?5)`
+      ).bind(
+        recoveryLockToken,
+        recoveryLockUntil,
+        account.emnifeed_id,
+        now,
+        cooldownCutoff
+      ),
+      env.DB.prepare(
+        `INSERT INTO recovery_key_consumptions
+          (recovery_key_id, version, emnifeed_id, challenge_id, consumed_at)
+         SELECT ?1, ?2, ?3, ?4, ?5
+          WHERE EXISTS (
+            SELECT 1 FROM accounts
+             WHERE emnifeed_id = ?3
+               AND recovery_lock_token = ?6
+               AND recovery_lock_until > ?5
+          )`
+      ).bind(
+        currentKey.recovery_key_id,
+        currentKey.version,
+        account.emnifeed_id,
+        challenge.challenge_id,
+        now,
+        recoveryLockToken
+      ),
+      env.DB.prepare(
+        `INSERT INTO auth_challenge_consumptions
+          (challenge_id, purpose, credential_hash, consumed_at)
+         SELECT ?1, ?2, ?3, ?4
+          WHERE EXISTS (
+            SELECT 1 FROM accounts
+             WHERE emnifeed_id = ?5
+               AND recovery_lock_token = ?6
+               AND recovery_lock_until > ?4
+          )`
+      ).bind(
+        challenge.challenge_id,
+        challenge.purpose,
+        await credentialReplayHash(body?.credential),
+        now,
+        account.emnifeed_id,
+        recoveryLockToken
+      ),
+      env.DB.prepare(
+        `UPDATE auth_challenges SET used_at = ?1
+          WHERE challenge_id = ?2
+            AND used_at IS NULL
+            AND EXISTS (
+              SELECT 1 FROM accounts
+               WHERE emnifeed_id = ?3
+                 AND recovery_lock_token = ?4
+                 AND recovery_lock_until > ?1
+            )`
+      ).bind(now, challenge.challenge_id, account.emnifeed_id, recoveryLockToken),
+      env.DB.prepare(
+        `DELETE FROM google_identities
+          WHERE emnifeed_id = ?1
+            AND EXISTS (
+              SELECT 1 FROM accounts
+               WHERE emnifeed_id = ?1
+                 AND recovery_lock_token = ?2
+                 AND recovery_lock_until > ?3
+            )`
+      ).bind(account.emnifeed_id, recoveryLockToken, now),
+      env.DB.prepare(
+        `INSERT INTO google_identities (google_sub, emnifeed_id, linked_at)
+         SELECT ?1, ?2, ?3
+          WHERE EXISTS (
+            SELECT 1 FROM accounts
+             WHERE emnifeed_id = ?2
+               AND recovery_lock_token = ?4
+               AND recovery_lock_until > ?3
+          )`
+      ).bind(googleIdentity.sub, account.emnifeed_id, now, recoveryLockToken),
+      env.DB.prepare(
+        `UPDATE recovery_keys
+            SET version = ?1,
+                crypto_version = ?2,
+                key_hash = ?3,
+                encrypted_key = ?4,
+                iv = ?5,
+                viewable_until = ?6,
+                updated_at = ?7
+          WHERE recovery_key_id = ?8
+            AND emnifeed_id = ?9
+            AND version = ?10
+            AND EXISTS (
+              SELECT 1 FROM accounts
+               WHERE emnifeed_id = ?9
+                 AND recovery_lock_token = ?11
+                 AND recovery_lock_until > ?7
+            )`
+      ).bind(
+        replacementVersion,
+        replacementSecretVersion,
+        replacementHash,
+        replacementEncrypted.ciphertext,
+        replacementEncrypted.iv,
+        now + config.visibilitySeconds,
+        now,
+        currentKey.recovery_key_id,
+        account.emnifeed_id,
+        currentKey.version,
+        recoveryLockToken
+      ),
+      env.DB.prepare(
+        `UPDATE auth_sessions
+            SET revoked_at = ?1
+          WHERE emnifeed_id = ?2
+            AND revoked_at IS NULL
+            AND EXISTS (
+              SELECT 1 FROM accounts
+               WHERE emnifeed_id = ?2
+                 AND recovery_lock_token = ?3
+                 AND recovery_lock_until > ?1
+            )`
+      ).bind(now, account.emnifeed_id, recoveryLockToken),
+      env.DB.prepare(
+        `INSERT INTO auth_sessions
+          (session_id, emnifeed_id, token_hash, created_at, last_seen_at, expires_at, revoked_at)
+         SELECT ?1, ?2, ?3, ?4, ?4, ?5, NULL
+          WHERE EXISTS (
+            SELECT 1 FROM accounts
+             WHERE emnifeed_id = ?2
+               AND recovery_lock_token = ?6
+               AND recovery_lock_until > ?4
+          )`
+      ).bind(sessionId, account.emnifeed_id, tokenHash, now, expiresAt, recoveryLockToken),
+      env.DB.prepare(
+        `UPDATE accounts
+            SET google_changed_at = ?1,
+                last_active_at = ?1,
+                recovery_lock_token = NULL,
+                recovery_lock_until = NULL
+          WHERE emnifeed_id = ?2
+            AND recovery_lock_token = ?3
+            AND recovery_lock_until > ?1`
+      ).bind(now, account.emnifeed_id, recoveryLockToken)
+    ]);
+
+    if (batchResults?.[0]?.meta?.changes !== 1) {
+      return genericRecoveryFailure(config, 409);
+    }
+  } catch {
+    return genericRecoveryFailure(config, 409);
+  }
+
+  const response = jsonResponse(
+    {
+      ok: true,
+      recovered: true,
+      user: publicAccount(account)
+    },
+    200,
+    config
+  );
+  response.headers.append("Set-Cookie", sessionCookie(sessionToken, config));
+  return response;
+}
+
+async function handleVault(request, env, config) {
+  if (!assertAllowedOrigin(request, config)) return invalidAuthResponse(config, 403);
+
+  const session = await loadSession(env, request);
+  if (!session) {
+    return jsonResponse({ ok: false, message: "You must be signed in." }, 401, config);
+  }
+
+  const rows = await env.DB.prepare(
+    `SELECT recovery_key_id, slot, version, crypto_version, encrypted_key, iv, viewable_until, created_at
+       FROM recovery_keys
+      WHERE emnifeed_id = ?1
+      ORDER BY slot ASC`
+  )
+    .bind(session.emnifeed_id)
+    .all();
+
+  const now = Math.floor(Date.now() / 1000);
+  const keys = [];
+
+  for (const row of rows.results || []) {
+    const viewable = Number(row.viewable_until) > now;
+    let key = null;
+
+    if (viewable) {
+      try {
+        key = await decryptRecoveryKey({
+          emnifeedId: session.emnifeed_id,
+          slot: row.slot,
+          version: row.version,
+          iv: row.iv,
+          ciphertext: row.encrypted_key,
+          secret: getRecoveryVaultSecret(env, row.crypto_version),
+          secretVersion: row.crypto_version
+        });
+      } catch {
+        return jsonResponse(
+          { ok: false, message: "The recovery vault could not be opened." },
+          500,
+          config
+        );
+      }
+    }
+
+    keys.push({
+      slot: row.slot,
+      version: row.version,
+      createdAt: row.created_at,
+      viewable,
+      key,
+      maskedKey: "X".repeat(RECOVERY_KEY_LENGTH)
+    });
+  }
+
+  return jsonResponse({ ok: true, keys }, 200, config);
+}
+
+export async function cleanupAuthData(env) {
+  if (!env?.DB) {
+    throw new Error("The EmniFun D1 database binding is not configured.");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  return env.DB.batch([
+    env.DB.prepare(
+      `DELETE FROM auth_challenges WHERE expires_at <= ?1`
+    ).bind(now),
+    env.DB.prepare(
+      `DELETE FROM auth_challenge_consumptions
+        WHERE consumed_at <= ?1
+          AND NOT EXISTS (
+            SELECT 1 FROM auth_challenges c
+             WHERE c.challenge_id = auth_challenge_consumptions.challenge_id
+          )`
+    ).bind(now - AUTH_CHALLENGE_CONSUMPTION_RETENTION_SECONDS),
+    env.DB.prepare(
+      `DELETE FROM auth_sessions
+        WHERE expires_at <= ?1
+           OR (revoked_at IS NOT NULL AND revoked_at <= ?1)`
+    ).bind(now)
+  ]);
+}
+
+export async function handleAuthRequest(request, env) {
+  let config;
+
+  try {
+    config = authConfig(env);
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ ok: false, message: error.message || "Authentication is not configured." }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff"
+        }
+      }
+    );
+  }
+
+  const url = new URL(request.url);
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": config.allowedOrigin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Vary": "Origin"
+      }
+    });
+  }
+
+  if (!assertAllowedOrigin(request, config)) {
+    return invalidAuthResponse(config, 403);
+  }
+
+  const rateLimitCategory = rateLimitCategoryForPath(path);
+
+  try {
+    if (rateLimitCategory) {
+      await enforceRateLimit(request, env, rateLimitCategory);
+    }
+    if (request.method === "GET" && path === "/api/auth/google/challenge") {
+      return handleGoogleChallenge(request, env, config);
+    }
+
+    if (request.method === "POST" && path === "/api/auth/google") {
+      return handleGoogleAuth(request, env, config);
+    }
+
+    if (request.method === "POST" && path === "/api/auth/register") {
+      return handleRegister(request, env, config);
+    }
+
+    if (request.method === "GET" && path === "/api/auth/me") {
+      return handleMe(request, env, config);
+    }
+
+    if (request.method === "POST" && path === "/api/auth/logout") {
+      return handleLogout(request, env, config);
+    }
+
+    if (request.method === "POST" && path === "/api/auth/recovery/verify") {
+      return handleRecoveryVerify(request, env, config);
+    }
+
+    if (request.method === "POST" && path === "/api/auth/recovery/complete") {
+      return handleRecoveryComplete(request, env, config);
+    }
+
+    if (request.method === "GET" && path === "/api/account/vault") {
+      return handleVault(request, env, config);
+    }
+
+    return jsonResponse({ ok: false, message: "Not found." }, 404, config);
+  } catch (error) {
+    const status = Number.isInteger(error?.status) ? error.status : 500;
+
+    if (path === "/api/auth/recovery/verify" || path === "/api/auth/recovery/complete") {
+      return genericRecoveryFailure(config, status);
+    }
+
+    return jsonResponse(
+      {
+        ok: false,
+        message:
+          status >= 500
+            ? "Authentication service error. Please try again."
+            : error.message
+      },
+      status,
+      config
+    );
+  }
+}
+
+export const __authInternals = Object.freeze({
+  normalizeGamerTag,
+  gamerTagKey,
+  generateRecoveryKey,
+  generateEmniFeedId,
+  hashRecoveryKey,
+  encryptRecoveryKey,
+  decryptRecoveryKey,
+  credentialReplayHash,
+  sessionCookie,
+  base64UrlEncode,
+  base64UrlDecode,
+  getRecoveryVaultSecret,
+  rateLimitCategoryForPath,
+  rateLimitKey,
+  enforceRateLimit,
+  RECOVERY_KEY_PATTERN
+});
