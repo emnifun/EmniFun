@@ -257,18 +257,24 @@ function setupNavigation() {
 
 async function initialize() {
   setupNavigation();
-  await hydrateAuth();
-  syncAuthNavigation();
 
+  // Render the public application immediately. Authentication hydration is
+  // deliberately non-blocking so a slow/unavailable auth backend cannot make
+  // the entire single-page application appear frozen.
   const route = getRouteFromHash();
 
   if (!ROUTES.has(route)) {
     window.history.replaceState(null, "", "#home");
     renderRoute(DEFAULT_ROUTE);
-    return;
+  } else {
+    renderRoute(route);
   }
 
-  renderRoute(route);
+  // Reconcile authentication state in the background. Public routes remain
+  // usable even when the auth API is temporarily unavailable.
+  await hydrateAuth();
+  syncAuthNavigation();
+  renderRoute(getRouteFromHash());
 }
 
 void initialize();
