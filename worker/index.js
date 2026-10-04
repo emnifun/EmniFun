@@ -211,7 +211,7 @@ async function loadSession(env, sessionId) {
 }
 
 async function saveSession(env, session) {
-  const result = await env.DB.prepare(\`UPDATE fivewink_sessions
+  const result = await env.DB.prepare(`UPDATE fivewink_sessions
      SET attempts_json = ?1,
          guesses_json = ?2,
          clues_json = ?3,
@@ -221,7 +221,7 @@ async function saveSession(env, session) {
          seventh_guess = ?7,
          version = version + 1,
          updated_at = ?8
-     WHERE session_id = ?9 AND version = ?10\`)
+     WHERE session_id = ?9 AND version = ?10`)
     .bind(
       JSON.stringify(session.attempts),
       JSON.stringify(session.guesses),
@@ -268,10 +268,10 @@ async function createSession(env, puzzle) {
   const sessionId = crypto.randomUUID();
 
   await env.DB.prepare(
-    \`INSERT INTO fivewink_sessions
+    `INSERT INTO fivewink_sessions
       (session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json,
        clues_used, status, result, seventh_guess, version, created_at, updated_at, expires_at)
-     VALUES (?1, ?2, 'game1', ?3, ?4, ?5, ?6, 0, 'playing', NULL, NULL, 1, ?7, ?7, ?8)\`
+     VALUES (?1, ?2, 'game1', ?3, ?4, ?5, ?6, 0, 'playing', NULL, NULL, 1, ?7, ?7, ?8)`
   )
     .bind(
       sessionId,
