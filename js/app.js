@@ -2,41 +2,20 @@ import { renderGame1 } from "./games/game1/game1-ui.js";
 import { renderGame2 } from "./games/game2/game2-ui.js";
 import { renderGame3 } from "./games/game3/game3-ui.js";
 import { getGameStatistics } from "./statistics/statistics.js";
-import {
-  getCurrentUser,
-  hydrateAuth
-} from "./auth/auth.js";
-import {
-  renderAccountPage,
-  renderLoginPage
-} from "./auth/auth-ui.js";
+import { isLoggedIn } from "./auth/auth.js";
 
 const views = [...document.querySelectorAll(".view")];
 const navLinks = [...document.querySelectorAll(".nav-link")];
 const viewLinks = [...document.querySelectorAll("[data-view]")];
 const gamesView = document.querySelector("#games");
 const gameArea = document.querySelector("#game-area");
-const accountContent = document.querySelector("#account-content");
-const loginContent = document.querySelector("#login-content");
 const mobileMenuToggle = document.querySelector("#mobile-menu-toggle");
 const primaryNavigation = document.querySelector("#primary-navigation");
 
 const DEFAULT_ROUTE = "home";
-const PRIMARY_ROUTES = new Set([
-  "home",
-  "games",
-  "statistics",
-  "archive",
-  "login",
-  "account"
-]);
+const PRIMARY_ROUTES = new Set(["home", "games", "statistics", "archive", "login"]);
 const GAME_ROUTES = new Set(["games/game1"]);
-const ACCOUNT_ROUTES = new Set(["account", "account/vault"]);
-const ROUTES = new Set([
-  ...PRIMARY_ROUTES,
-  ...GAME_ROUTES,
-  ...ACCOUNT_ROUTES
-]);
+const ROUTES = new Set([...PRIMARY_ROUTES, ...GAME_ROUTES]);
 
 function getRouteFromHash() {
   const rawHash = window.location.hash.replace(/^#/, "").trim();
@@ -45,15 +24,6 @@ function getRouteFromHash() {
 
 function normalizeRoute(route) {
   return ROUTES.has(route) ? route : DEFAULT_ROUTE;
-}
-
-function resolveAuthRoute(route) {
-  const currentRoute = normalizeRoute(route);
-  const user = getCurrentUser();
-
-  if (user && currentRoute === "login") return "account";
-  if (!user && ACCOUNT_ROUTES.has(currentRoute)) return "login";
-  return currentRoute;
 }
 
 function closeMobileNavigation() {
@@ -79,18 +49,9 @@ function toggleMobileNavigation() {
   }
 }
 
-function syncAuthNavigation() {
-  const loginLink = navLinks.find((link) => link.dataset.navAuth === "true");
-  if (!loginLink) return;
-
-  const signedIn = Boolean(getCurrentUser());
-  loginLink.dataset.view = signedIn ? "account" : "login";
-  loginLink.textContent = signedIn ? "Account" : "Login";
-}
-
 function navigateTo(route) {
   closeMobileNavigation();
-  const nextRoute = resolveAuthRoute(route);
+  const nextRoute = normalizeRoute(route);
 
   if (getRouteFromHash() === nextRoute) {
     renderRoute(nextRoute);
@@ -101,35 +62,18 @@ function navigateTo(route) {
 }
 
 function renderRoute(route) {
-  const currentRoute = resolveAuthRoute(route);
+  const currentRoute = normalizeRoute(route);
   const isGame1 = currentRoute === "games/game1";
-  const isAccount = ACCOUNT_ROUTES.has(currentRoute);
-  const viewId = isGame1 ? "games" : isAccount ? "account" : currentRoute;
+  const viewId = isGame1 ? "games" : currentRoute;
 
-  document.title =
-    isGame1
-      ? "FiveWink — EmniFun"
-      : currentRoute === "account/vault"
-        ? "Recovery Vault — EmniFun"
-        : currentRoute === "account"
-          ? "Account — EmniFun"
-          : "EmniFun";
-
-  if (getRouteFromHash() !== currentRoute) {
-    window.history.replaceState(null, "", `#${currentRoute}`);
-  }
+  document.title = isGame1 ? "FiveWink — EmniFun" : "EmniFun";
 
   views.forEach((view) => {
     view.classList.toggle("active", view.id === viewId);
   });
 
   navLinks.forEach((link) => {
-    const linkRoute = link.dataset.view;
-    const active =
-      linkRoute === viewId ||
-      (linkRoute === "account" && isAccount) ||
-      (link.dataset.navAuth === "true" && isAccount);
-    link.classList.toggle("active", active);
+    link.classList.toggle("active", link.dataset.view === viewId);
   });
 
   closeMobileNavigation();
@@ -149,14 +93,6 @@ function renderRoute(route) {
 
   if (viewId === "statistics") {
     renderStatistics();
-  }
-
-  if (viewId === "login") {
-    renderLoginPage(loginContent);
-  }
-
-  if (viewId === "account") {
-    renderAccountPage(accountContent, currentRoute);
   }
 }
 
@@ -248,17 +184,14 @@ function setupNavigation() {
 
     renderRoute(route);
   });
-
-  window.addEventListener("emnifun-auth-changed", () => {
-    syncAuthNavigation();
-    renderRoute(getRouteFromHash());
-  });
 }
 
-async function initialize() {
+function initialize() {
   setupNavigation();
-  await hydrateAuth();
-  syncAuthNavigation();
+
+  document.querySelector("#login-status").textContent = isLoggedIn()
+    ? "You are currently signed in."
+    : "Login and registration will be connected to the backend in a future phase.";
 
   const route = getRouteFromHash();
 
@@ -271,4 +204,4 @@ async function initialize() {
   renderRoute(route);
 }
 
-void initialize();
+initialize();

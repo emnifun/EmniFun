@@ -130,30 +130,3 @@ http://localhost:8000
 The repository includes client-state, server-rule, and backend-service tests under `tests/`.
 
 See `worker/README.md` for Cloudflare setup and D1 configuration.
-
-EmniFun account authentication uses Google Identity Services with the Google
-ID token verified server-side by the Cloudflare Worker. The permanent backend
-identity is the internal EmniFeed ID; users do not enter or see it. A permanent
-user-chosen Gamer Tag is required for account creation and is the user-facing
-identifier used together with one recovery key during recovery.
-
-Recovery keys are 16-character cryptographically random alphanumeric values.
-The Worker stores only a keyed validation hash plus authenticated encrypted
-material protected by the Cloudflare Worker Secret RECOVERY_VAULT_SECRET.
-The browser receives plaintext keys only through the authenticated Vault while
-the configured per-key viewing period remains active. Viewing expiry does not
-invalidate the key. Successful recovery consumes only the used key slot and
-rotates that slot; the unused key remains valid.
-
-Required Worker configuration:
-
-- Worker Secret: RECOVERY_VAULT_SECRET
-- Nonsecret var: GOOGLE_CLIENT_ID
-- Nonsecret var: AUTH_ALLOWED_ORIGIN
-- Nonsecret var: RECOVERY_KEY_VISIBILITY_SECONDS (must be configured before deployment; the business duration is intentionally not hardcoded)
-- Nonsecret var: RECOVERY_VAULT_SECRET_VERSION (current vault cryptographic secret version, starting at 1)
-- Rate limiting bindings: AUTH_RATE_LIMITER, AUTH_CHALLENGE_RATE_LIMITER, RECOVERY_RATE_LIMITER
-- Cron Trigger: 15 * * * * (UTC) for auth/session cleanup
-
-Current cross-site frontend/API session cookies use SameSite=None; Secure; HttpOnly; Partitioned. A future same-site custom domain can switch the cookie policy without changing the permanent account identity model.
-

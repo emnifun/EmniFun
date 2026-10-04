@@ -8,35 +8,5 @@
       "database_name": "emnifun-db",
       "database_id": "10ae7385-bdc8-45c9-9739-d4815fc3f6ec"
     }
-  ],
-  "ratelimits": [
-    {
-      "name": "AUTH_RATE_LIMITER",
-      "namespace_id": "910101",
-      "simple": { "limit": 20, "period": 60 }
-    },
-    {
-      "name": "AUTH_CHALLENGE_RATE_LIMITER",
-      "namespace_id": "910102",
-      "simple": { "limit": 5, "period": 60 }
-    },
-    {
-      "name": "RECOVERY_RATE_LIMITER",
-      "namespace_id": "910103",
-      "simple": { "limit": 5, "period": 60 }
-    }
-  ],
-  "vars": {
-    "GOOGLE_CLIENT_ID": "474720562463-f64vlq15je8q5or8ud1gbr4fvkio8o29.apps.googleusercontent.com",
-    "AUTH_ALLOWED_ORIGIN": "https://emnifun.github.io",
-    "AUTH_SESSION_TTL_SECONDS": "2592000",
-    "AUTH_CHALLENGE_TTL_SECONDS": "600",
-    "GOOGLE_CHANGE_COOLDOWN_SECONDS": "604800",
-    "AUTH_COOKIE_SAMESITE": "None",
-    "AUTH_COOKIE_PARTITIONED": "true",
-    "RECOVERY_VAULT_SECRET_VERSION": "1"
-  },
-  "triggers": {
-    "crons": ["15 * * * *"]
-  }
+  ]
 }
