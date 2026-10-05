@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFile } from "node:fs/promises";
-import { __authInternals } from "../worker/auth.js";
+import { __authInternals, handleAuthRequest } from "../worker/auth.js";
 
 const {
   normalizeGamerTag,
@@ -22,6 +22,57 @@ const {
 } = __authInternals;
 
 const secret = "test-only-recovery-vault-secret-not-production";
+const allowedOrigin = "https://emnifun.github.io";
+
+function createTestD1(db) {
+  return {
+    prepare(query) {
+      let values = [];
+      const statement = {
+        bind(...boundValues) {
+          values = boundValues;
+          return statement;
+        },
+        async first() {
+          return db.prepare(query).get(...values) ?? null;
+        },
+        async all() {
+          return { results: db.prepare(query).all(...values) };
+        },
+        async run() {
+          const result = db.prepare(query).run(...values);
+          return { meta: { changes: Number(result.changes) } };
+        }
+      };
+      return statement;
+    },
+    async batch(statements) {
+      db.exec("BEGIN");
+      try {
+        const results = [];
+        for (const statement of statements) {
+          results.push(await statement.run());
+        }
+        db.exec("COMMIT");
+        return results;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    }
+  };
+}
+
+function createRegistrationRequest(registrationChallenge) {
+  return new Request("https://emnifun.example/api/auth/register", {
+    method: "POST",
+    headers: {
+      Origin: allowedOrigin,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ registrationChallenge, gamerTag: "FirstPlayer" })
+  });
+}
 
 function testConfig() {
   return {
@@ -173,6 +224,66 @@ test("Google credential replay hashes are deterministic and distinct", async () 
   assert.match(hashA1, /^[A-Za-z0-9_-]+$/);
 });
 
+test("registration consumes a challenge without a credential and rejects replay", async () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(await readFile(new URL("../worker/migrations/0001_auth.sql", import.meta.url), "utf8"));
+  db.exec(await readFile(new URL("../worker/migrations/0002_auth_security_fixes.sql", import.meta.url), "utf8"));
+
+  const now = Math.floor(Date.now() / 1000);
+  const challengeId = crypto.randomUUID();
+  db.prepare(`INSERT INTO auth_challenges
+    (challenge_id, purpose, google_sub, nonce_hash, created_at, expires_at, used_at)
+    VALUES (?, 'registration', ?, ?, ?, ?, NULL)`
+  ).run(challengeId, "google-sub-for-test", "nonce-hash-for-test", now, now + 600);
+
+  const env = {
+    DB: createTestD1(db),
+    AUTH_ALLOWED_ORIGIN: allowedOrigin,
+    AUTH_SESSION_TTL_SECONDS: "2592000",
+    AUTH_CHALLENGE_TTL_SECONDS: "600",
+    GOOGLE_CHANGE_COOLDOWN_SECONDS: "2592000",
+    GOOGLE_CLIENT_ID: "test-google-client-id",
+    AUTH_COOKIE_SAMESITE: "None",
+    AUTH_COOKIE_PARTITIONED: "true",
+    RECOVERY_KEY_VISIBILITY_SECONDS: "172800",
+    RECOVERY_VAULT_SECRET_VERSION: "1",
+    RECOVERY_VAULT_SECRET: secret,
+    AUTH_RATE_LIMITER: { async limit() { return { success: true }; } }
+  };
+
+  const response = await handleAuthRequest(createRegistrationRequest(challengeId), env);
+  const responseBody = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(responseBody.ok, true);
+  assert.equal(responseBody.accountCreated, true);
+  assert.equal(responseBody.user.gamerTag, "FirstPlayer");
+  assert.match(response.headers.get("Set-Cookie"), /Secure/);
+  assert.match(response.headers.get("Set-Cookie"), /HttpOnly/);
+  assert.match(response.headers.get("Set-Cookie"), /Partitioned/);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM accounts").get().count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM recovery_keys").get().count, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM auth_sessions").get().count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM auth_challenge_consumptions").get().count, 1);
+  assert.equal(
+    db.prepare("SELECT credential_hash FROM auth_challenge_consumptions WHERE challenge_id = ?")
+      .get(challengeId).credential_hash,
+    null
+  );
+  assert.notEqual(
+    db.prepare("SELECT used_at FROM auth_challenges WHERE challenge_id = ?").get(challengeId).used_at,
+    null
+  );
+
+  const replayResponse = await handleAuthRequest(createRegistrationRequest(challengeId), env);
+  assert.equal(replayResponse.status, 400);
+  assert.equal((await replayResponse.json()).ok, false);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM accounts").get().count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM recovery_keys").get().count, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM auth_sessions").get().count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM auth_challenge_consumptions").get().count, 1);
+});
+
 test("v1 vault crypto remains distinct from future v2 crypto", async () => {
   const emnifeedId = "EF-0123456789abcdef0123456789abcdef";
   const key = generateRecoveryKey();
@@ -282,3 +393,4 @@ test("cleanup is scheduled without touching recovery-key consumption history", a
   assert.match(worker, /DELETE FROM auth_sessions/);
   assert.doesNotMatch(worker, /DELETE FROM recovery_key_consumptions/);
 });
+

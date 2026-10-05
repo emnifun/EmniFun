@@ -923,7 +923,7 @@ async function handleRegister(request, env, config) {
       ).bind(
         challenge.challenge_id,
         challenge.purpose,
-        await credentialReplayHash(body?.credential),
+        null,
         now
       ),
       env.DB.prepare(
