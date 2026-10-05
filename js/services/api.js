@@ -5,10 +5,9 @@
  * use an HttpOnly cookie session and never reuse the FiveWink game token.
  */
 
-const FIVEWINK_API_BASE =
-  "https://emnifun.emnifun.workers.dev/api/fivewink";
-const AUTH_API_BASE =
-  "https://emnifun.emnifun.workers.dev/api";
+const API_ORIGIN = "https://emnifun.emnifun.workers.dev";
+const FIVEWINK_API_BASE = API_ORIGIN + "/api/fivewink";
+const AUTH_API_BASE = API_ORIGIN + "/api";
 
 export class FiveWinkApiError extends Error {
   constructor(message, status = 0, options = {}) {
