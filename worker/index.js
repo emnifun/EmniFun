@@ -12,6 +12,7 @@ import {
   createGameToken,
   verifyGameToken
 } from "./token.js";
+import { handleAuthRequest, cleanupAuthData } from "./auth.js";
 
 const VALID_GUESSES_URL =
   "https://raw.githubusercontent.com/emnifun/EmniFun/main/data/game1/vocabulary/valid-guesses.json";
@@ -698,7 +699,11 @@ async function handleSkip(request, env) {
 
 async function handleRequest(request, env) {
   const url = new URL(request.url);
-  const path = url.pathname.replace(/\\/+$/, "") || "/";
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+
+  if (path.startsWith("/api/auth/") || path === "/api/account/vault") {
+    return handleAuthRequest(request, env);
+  }
 
   if (request.method === "OPTIONS") {
     return new Response(null, {
@@ -747,6 +752,14 @@ export default {
         },
         status
       );
+    }
+  },
+  async scheduled(controller, env) {
+    try {
+      await cleanupAuthData(env);
+    } catch (error) {
+      console.error("EmniFun auth cleanup failed", error);
+      controller.noRetry?.();
     }
   }
 };
