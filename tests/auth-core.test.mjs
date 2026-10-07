@@ -433,6 +433,8 @@ test("recovery verify and complete return a specific cooldown message when block
     DB: createTestD1(db),
     AUTH_ALLOWED_ORIGIN: allowedOrigin,
     GOOGLE_CHANGE_COOLDOWN_SECONDS: cooldown,
+    GOOGLE_CLIENT_ID: "test-google-client-id",
+    RECOVERY_KEY_VISIBILITY_SECONDS: "172800",
     RECOVERY_VAULT_SECRET_VERSION: secretVersion,
     RECOVERY_VAULT_SECRET: vaultSecret,
     RECOVERY_RATE_LIMITER: { async limit() { return { success: true }; } }
@@ -454,7 +456,7 @@ test("recovery verify and complete return a specific cooldown message when block
   assert.equal(body.ok, false);
   assert.equal(
     body.message,
-    \`You have already recovered this account recently. Google account replacement is available again after \${availableAtStr}.\`
+    `You have already recovered this account recently. Google account replacement is available again after ${availableAtStr}.`
   );
 });
 
