@@ -1093,7 +1093,21 @@ async function handleRecoveryVerify(request, env, config) {
     Number.isInteger(account.google_changed_at) &&
     now - account.google_changed_at < config.googleChangeCooldownSeconds
   ) {
-    return genericRecoveryFailure(config);
+    const availableAt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    }).format(new Date((account.google_changed_at + config.googleChangeCooldownSeconds) * 1000));
+
+    return jsonResponse(
+      {
+        ok: false,
+        message: `You have already recovered this account recently. Google account replacement is available again after ${availableAt}.`
+      },
+      400,
+      config
+    );
   }
 
   const challenge = await createChallenge(env, {
@@ -1154,7 +1168,21 @@ async function handleRecoveryComplete(request, env, config) {
     Number.isInteger(account.google_changed_at) &&
     now - account.google_changed_at < config.googleChangeCooldownSeconds
   ) {
-    return genericRecoveryFailure(config);
+    const availableAt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    }).format(new Date((account.google_changed_at + config.googleChangeCooldownSeconds) * 1000));
+
+    return jsonResponse(
+      {
+        ok: false,
+        message: `You have already recovered this account recently. Google account replacement is available again after ${availableAt}.`
+      },
+      400,
+      config
+    );
   }
 
   const currentGoogle = await env.DB.prepare(
