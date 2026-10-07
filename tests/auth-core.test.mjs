@@ -394,3 +394,67 @@ test("cleanup is scheduled without touching recovery-key consumption history", a
   assert.doesNotMatch(worker, /DELETE FROM recovery_key_consumptions/);
 });
 
+test("recovery verify and complete return a specific cooldown message when blocked", async () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(await readFile(new URL("../worker/migrations/0001_auth.sql", import.meta.url), "utf8"));
+  db.exec(await readFile(new URL("../worker/migrations/0002_auth_security_fixes.sql", import.meta.url), "utf8"));
+
+  const now = Math.floor(Date.now() / 1000);
+  const cooldown = 2592000; // 30 days
+  const recentGoogleChangeAt = now - 1000; // Changed 1000s ago
+  const availableAtStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  }).format(new Date((recentGoogleChangeAt + cooldown) * 1000));
+
+  const accountId = "EF-0123456789abcdef0123456789abcdef";
+  const gamerTag = "CooldownTester";
+  const gamerTagKeyStr = "cooldowntester";
+  const recoveryKey = generateRecoveryKey();
+
+  db.prepare(`INSERT INTO accounts
+    (emnifeed_id, gamer_tag, gamer_tag_key, created_at, last_active_at, google_changed_at)
+    VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(accountId, gamerTag, gamerTagKeyStr, now - 5000, now - 1000, recentGoogleChangeAt);
+
+  const secretVersion = 1;
+  const vaultSecret = secret;
+  const keyHash = await hashRecoveryKey(accountId, recoveryKey, vaultSecret, secretVersion);
+
+  db.prepare(`INSERT INTO recovery_keys
+    (recovery_key_id, emnifeed_id, slot, version, crypto_version, key_hash,
+     encrypted_key, iv, viewable_until, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run("key-1", accountId, 1, 1, secretVersion, keyHash, "encrypted", "iv", now + 1000, now - 5000, now - 5000);
+
+  const env = {
+    DB: createTestD1(db),
+    AUTH_ALLOWED_ORIGIN: allowedOrigin,
+    GOOGLE_CHANGE_COOLDOWN_SECONDS: cooldown,
+    RECOVERY_VAULT_SECRET_VERSION: secretVersion,
+    RECOVERY_VAULT_SECRET: vaultSecret,
+    RECOVERY_RATE_LIMITER: { async limit() { return { success: true }; } }
+  };
+
+  const request = new Request("https://emnifun.example/api/auth/recovery/verify", {
+    method: "POST",
+    headers: {
+      Origin: allowedOrigin,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ gamerTag, recoveryKey, googleNonce: "nonce-12345678901234567890" })
+  });
+
+  const response = await handleAuthRequest(request, env);
+  const body = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(body.ok, false);
+  assert.equal(
+    body.message,
+    \`You have already recovered this account recently. Google account replacement is available again after \${availableAtStr}.\`
+  );
+});
+
