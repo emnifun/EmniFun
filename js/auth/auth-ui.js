@@ -313,7 +313,10 @@ export function renderLoginPage(container) {
     } catch (error) {
       setText(
         recoveryFeedback,
-        "Recovery details could not be verified.",
+        authErrorMessage(
+          error,
+          "Recovery details could not be verified."
+        ),
         "auth-feedback error"
       );
     }
