@@ -95,6 +95,7 @@ async function loadPuzzles() {
     const { ok, data } = await requestJson(ADMIN_API_BASE + "/puzzles");
     if (ok) {
       adminState.puzzles = data.puzzles || [];
+      updateTable();
     }
   } catch (error) {
     showToast(error.message);
@@ -122,8 +123,8 @@ async function createPuzzle(puzzleData) {
   }
 
   showToast("Draft puzzle created successfully.");
-  await loadPuzzles();
   closeModal();
+  await loadPuzzles();
 }
 
 async function updatePuzzle(puzzleId, puzzleData) {
@@ -137,8 +138,8 @@ async function updatePuzzle(puzzleId, puzzleData) {
   }
 
   showToast("Puzzle updated successfully.");
-  await loadPuzzles();
   closeModal();
+  await loadPuzzles();
 }
 
 async function publishPuzzle(puzzleId) {
@@ -151,8 +152,8 @@ async function publishPuzzle(puzzleId) {
   }
 
   showToast("Puzzle published!");
-  await loadPuzzles();
   closeModal();
+  await loadPuzzles();
 }
 
 async function unpublishPuzzle(puzzleId) {
@@ -165,8 +166,8 @@ async function unpublishPuzzle(puzzleId) {
   }
 
   showToast("Puzzle moved back to draft.");
-  await loadPuzzles();
   closeModal();
+  await loadPuzzles();
 }
 
 async function archivePuzzle(puzzleId) {
@@ -179,18 +180,82 @@ async function archivePuzzle(puzzleId) {
   }
 
   showToast("Puzzle archived.");
-  await loadPuzzles();
   closeModal();
+  await loadPuzzles();
+}
+
+async function deletePuzzle(puzzleId) {
+  const { ok, data } = await requestJson(`${ADMIN_API_BASE}/puzzles/${encodeURIComponent(puzzleId)}`, {
+    method: "DELETE"
+  });
+
+  if (!ok) {
+    throw new Error(data?.message || "Failed to delete puzzle.");
+  }
+
+  showToast("Puzzle permanently deleted.");
+  closeModal();
+  await loadPuzzles();
 }
 
 function openModal(modalConfig) {
   adminState.activeModal = modalConfig;
-  render();
+  renderModal();
 }
 
 function closeModal() {
   adminState.activeModal = null;
-  render();
+  renderModal();
+}
+
+function getFilteredPuzzles() {
+  return adminState.puzzles.filter((p) => {
+    if (adminState.filterStatus !== "all" && p.status !== adminState.filterStatus) {
+      return false;
+    }
+    if (adminState.searchQuery) {
+      const q = adminState.searchQuery.toUpperCase();
+      return p.date.includes(q) || p.answer.toUpperCase().includes(q);
+    }
+    return true;
+  });
+}
+
+function updateTable() {
+  const container = document.getElementById("puzzle-table-container");
+  if (!container) return;
+
+  const filteredPuzzles = getFilteredPuzzles();
+
+  if (filteredPuzzles.length === 0) {
+    container.innerHTML = `
+      <div class="admin-empty-state">
+        <p>No puzzles found matching the current criteria.</p>
+        <button id="btn-empty-create" class="button secondary" type="button">Create your first puzzle</button>
+      </div>
+    `;
+    document.getElementById("btn-empty-create")?.addEventListener("click", () => {
+      openModal({ type: "create" });
+    });
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Date (IST)</th>
+          <th>Status</th>
+          <th>Answer</th>
+          <th>Clues (5)</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filteredPuzzles.map(renderPuzzleRow).join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 // Render Functions
@@ -246,18 +311,7 @@ function render() {
     return;
   }
 
-  // Authorized Dashboard
-  const filteredPuzzles = adminState.puzzles.filter((p) => {
-    if (adminState.filterStatus !== "all" && p.status !== adminState.filterStatus) {
-      return false;
-    }
-    if (adminState.searchQuery) {
-      const q = adminState.searchQuery.toUpperCase();
-      return p.date.includes(q) || p.answer.toUpperCase().includes(q);
-    }
-    return true;
-  });
-
+  // Authorized Dashboard Shell
   app.innerHTML = `
     <div class="admin-shell">
       <header class="admin-header">
@@ -282,6 +336,8 @@ function render() {
             type="search"
             placeholder="Search date or answer…"
             value="${escapeHtml(adminState.searchQuery)}"
+            autocomplete="off"
+            spellcheck="false"
           />
           <select id="select-status" class="admin-select">
             <option value="all" ${adminState.filterStatus === "all" ? "selected" : ""}>All Statuses</option>
@@ -294,34 +350,13 @@ function render() {
         <button id="btn-refresh" class="admin-btn-sm" type="button">↻ Refresh</button>
       </section>
 
-      <main class="admin-table-container">
-        ${
-          filteredPuzzles.length === 0
-            ? `<div class="admin-empty-state">
-                <p>No puzzles found matching the current criteria.</p>
-                <button id="btn-empty-create" class="button secondary" type="button">Create your first puzzle</button>
-              </div>`
-            : `<table class="admin-table">
-                <thead>
-                  <tr>
-                    <th>Date (IST)</th>
-                    <th>Status</th>
-                    <th>Answer</th>
-                    <th>Clues (5)</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${filteredPuzzles.map(renderPuzzleRow).join("")}
-                </tbody>
-              </table>`
-        }
-      </main>
+      <main id="puzzle-table-container" class="admin-table-container"></main>
     </div>
-    ${renderModalContent()}
+    <div id="modal-container"></div>
   `;
 
   attachEventHandlers();
+  updateTable();
 }
 
 function renderPuzzleRow(p) {
@@ -352,36 +387,43 @@ function renderPuzzleRow(p) {
         <div class="admin-actions">
           ${
             p.status === "draft" || p.status === "unpublished"
-              ? `<button class="admin-btn-sm primary btn-edit" data-id="${p.puzzleId}" type="button">Edit</button>
-                 <button class="admin-btn-sm publish btn-publish" data-id="${p.puzzleId}" type="button">Publish</button>`
+              ? `<button class="admin-btn-sm primary btn-edit" data-id="${escapeHtml(p.puzzleId)}" type="button">Edit</button>
+                 <button class="admin-btn-sm publish btn-publish" data-id="${escapeHtml(p.puzzleId)}" type="button">Publish</button>`
               : ""
           }
           ${
             isLocked
-              ? `<button class="admin-btn-sm warning btn-unpublish" data-id="${p.puzzleId}" type="button">Unpublish</button>
+              ? `<button class="admin-btn-sm warning btn-unpublish" data-id="${escapeHtml(p.puzzleId)}" type="button">Unpublish</button>
                  <span style="font-size: 0.78rem; color: #6b7280; align-self: center;" title="Published content cannot be edited">🔒 Locked</span>`
               : ""
           }
           ${
             !isArchived
-              ? `<button class="admin-btn-sm btn-archive" data-id="${p.puzzleId}" type="button">Archive</button>`
+              ? `<button class="admin-btn-sm btn-archive" data-id="${escapeHtml(p.puzzleId)}" type="button">Archive</button>`
               : ""
           }
+          <button class="admin-btn-sm warning btn-delete" data-id="${escapeHtml(p.puzzleId)}" type="button" title="Delete permanently for testing">Delete</button>
         </div>
       </td>
     </tr>
   `;
 }
 
-function renderModalContent() {
+function renderModal() {
+  const container = document.getElementById("modal-container");
+  if (!container) return;
+
   const modal = adminState.activeModal;
-  if (!modal) return "";
+  if (!modal) {
+    container.innerHTML = "";
+    return;
+  }
 
   if (modal.type === "create" || modal.type === "edit") {
     const isEdit = modal.type === "edit";
     const puzzle = modal.puzzle || { date: "", answer: "", clues: ["", "", "", "", ""] };
 
-    return `
+    container.innerHTML = `
       <div class="admin-modal-overlay" id="modal-overlay">
         <div class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading">
           <h2 id="modal-heading">${isEdit ? "Edit Draft Puzzle" : "Create New FiveWink Puzzle"}</h2>
@@ -448,10 +490,55 @@ function renderModalContent() {
         </div>
       </div>
     `;
+
+    document.getElementById("btn-modal-cancel")?.addEventListener("click", closeModal);
+    document.getElementById("modal-overlay")?.addEventListener("click", (e) => {
+      if (e.target.id === "modal-overlay") closeModal();
+    });
+
+    const puzzleForm = document.getElementById("puzzle-form");
+    puzzleForm?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorBanner = document.getElementById("modal-error-banner");
+      if (errorBanner) errorBanner.style.display = "none";
+
+      const date = document.getElementById("form-date")?.value.trim();
+      const answer = document.getElementById("form-answer")?.value.trim().toUpperCase();
+      const clues = [1, 2, 3, 4, 5].map(
+        (n) => document.getElementById(`form-clue-${n}`)?.value.trim() || ""
+      );
+
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        showModalError("Please provide a valid date in YYYY-MM-DD format.");
+        return;
+      }
+
+      if (!answer || answer.length !== 5 || !/^[A-Z]{5}$/.test(answer)) {
+        showModalError("Answer must be exactly 5 letters.");
+        return;
+      }
+
+      if (clues.some((c) => !c)) {
+        showModalError("All 5 clues are required and cannot be empty.");
+        return;
+      }
+
+      try {
+        if (modal.type === "edit") {
+          await updatePuzzle(modal.puzzle.puzzleId, { date, answer, clues });
+        } else {
+          await createPuzzle({ date, answer, clues });
+        }
+      } catch (error) {
+        showModalError(error.message);
+      }
+    });
+
+    return;
   }
 
   if (modal.type === "confirm") {
-    return `
+    container.innerHTML = `
       <div class="admin-modal-overlay" id="modal-overlay">
         <div class="admin-modal" style="max-width: 440px;" role="dialog" aria-modal="true">
           <h2>${escapeHtml(modal.title)}</h2>
@@ -465,9 +552,22 @@ function renderModalContent() {
         </div>
       </div>
     `;
-  }
 
-  return "";
+    document.getElementById("btn-modal-cancel")?.addEventListener("click", closeModal);
+    document.getElementById("modal-overlay")?.addEventListener("click", (e) => {
+      if (e.target.id === "modal-overlay") closeModal();
+    });
+
+    document.getElementById("btn-modal-confirm")?.addEventListener("click", async () => {
+      if (modal.onConfirm) {
+        try {
+          await modal.onConfirm();
+        } catch (error) {
+          showToast(error.message);
+        }
+      }
+    });
+  }
 }
 
 function attachEventHandlers() {
@@ -478,38 +578,33 @@ function attachEventHandlers() {
     openModal({ type: "create" });
   });
 
-  document.getElementById("btn-empty-create")?.addEventListener("click", () => {
-    openModal({ type: "create" });
-  });
-
   const searchInput = document.getElementById("input-search");
   searchInput?.addEventListener("input", (e) => {
     adminState.searchQuery = e.target.value;
-    render();
-    // Keep focus
-    document.getElementById("input-search")?.focus();
+    updateTable();
   });
 
   document.getElementById("select-status")?.addEventListener("change", (e) => {
     adminState.filterStatus = e.target.value;
-    render();
+    updateTable();
   });
 
-  // Action buttons
-  document.querySelectorAll(".btn-edit").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const puzzleId = btn.getAttribute("data-id");
+  // Table Event Delegation (row buttons)
+  const tableContainer = document.getElementById("puzzle-table-container");
+  tableContainer?.addEventListener("click", (e) => {
+    const editBtn = e.target.closest(".btn-edit");
+    if (editBtn) {
+      const puzzleId = editBtn.getAttribute("data-id");
       const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
       if (puzzle) openModal({ type: "edit", puzzle });
-    });
-  });
+      return;
+    }
 
-  document.querySelectorAll(".btn-publish").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const puzzleId = btn.getAttribute("data-id");
+    const pubBtn = e.target.closest(".btn-publish");
+    if (pubBtn) {
+      const puzzleId = pubBtn.getAttribute("data-id");
       const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
       if (!puzzle) return;
-
       openModal({
         type: "confirm",
         title: "Publish Puzzle?",
@@ -517,15 +612,14 @@ function attachEventHandlers() {
         confirmText: "Publish Now",
         onConfirm: () => publishPuzzle(puzzleId)
       });
-    });
-  });
+      return;
+    }
 
-  document.querySelectorAll(".btn-unpublish").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const puzzleId = btn.getAttribute("data-id");
+    const unpubBtn = e.target.closest(".btn-unpublish");
+    if (unpubBtn) {
+      const puzzleId = unpubBtn.getAttribute("data-id");
       const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
       if (!puzzle) return;
-
       openModal({
         type: "confirm",
         title: "Unpublish Puzzle?",
@@ -534,15 +628,14 @@ function attachEventHandlers() {
         danger: true,
         onConfirm: () => unpublishPuzzle(puzzleId)
       });
-    });
-  });
+      return;
+    }
 
-  document.querySelectorAll(".btn-archive").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const puzzleId = btn.getAttribute("data-id");
+    const archBtn = e.target.closest(".btn-archive");
+    if (archBtn) {
+      const puzzleId = archBtn.getAttribute("data-id");
       const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
       if (!puzzle) return;
-
       openModal({
         type: "confirm",
         title: "Archive Puzzle?",
@@ -550,60 +643,23 @@ function attachEventHandlers() {
         confirmText: "Archive",
         onConfirm: () => archivePuzzle(puzzleId)
       });
-    });
-  });
-
-  // Modal actions
-  document.getElementById("btn-modal-cancel")?.addEventListener("click", closeModal);
-  document.getElementById("modal-overlay")?.addEventListener("click", (e) => {
-    if (e.target.id === "modal-overlay") closeModal();
-  });
-
-  document.getElementById("btn-modal-confirm")?.addEventListener("click", async () => {
-    if (adminState.activeModal?.onConfirm) {
-      try {
-        await adminState.activeModal.onConfirm();
-      } catch (error) {
-        showToast(error.message);
-      }
-    }
-  });
-
-  const puzzleForm = document.getElementById("puzzle-form");
-  puzzleForm?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const errorBanner = document.getElementById("modal-error-banner");
-    if (errorBanner) errorBanner.style.display = "none";
-
-    const date = document.getElementById("form-date")?.value.trim();
-    const answer = document.getElementById("form-answer")?.value.trim().toUpperCase();
-    const clues = [1, 2, 3, 4, 5].map(
-      (n) => document.getElementById(`form-clue-${n}`)?.value.trim() || ""
-    );
-
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      showModalError("Please provide a valid date in YYYY-MM-DD format.");
       return;
     }
 
-    if (!answer || answer.length !== 5 || !/^[A-Z]{5}$/.test(answer)) {
-      showModalError("Answer must be exactly 5 letters.");
+    const delBtn = e.target.closest(".btn-delete");
+    if (delBtn) {
+      const puzzleId = delBtn.getAttribute("data-id");
+      const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
+      if (!puzzle) return;
+      openModal({
+        type: "confirm",
+        title: "Delete Puzzle Permanently?",
+        message: `Delete this puzzle permanently? This cannot be undone.`,
+        confirmText: "Delete Permanently",
+        danger: true,
+        onConfirm: () => deletePuzzle(puzzleId)
+      });
       return;
-    }
-
-    if (clues.some((c) => !c)) {
-      showModalError("All 5 clues are required and cannot be empty.");
-      return;
-    }
-
-    try {
-      if (adminState.activeModal.type === "edit") {
-        await updatePuzzle(adminState.activeModal.puzzle.puzzleId, { date, answer, clues });
-      } else {
-        await createPuzzle({ date, answer, clues });
-      }
-    } catch (error) {
-      showModalError(error.message);
     }
   });
 }

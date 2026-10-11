@@ -1,9 +1,7 @@
-import { game2Info } from "./game2-data.js";
-
 export function renderGame2(container) {
-  container.innerHTML = 
+  container.innerHTML =
     '<div class="placeholder">' +
-      '<h3>' + game2Info.name + '</h3>' +
-      '<p>Coming Soon</p>' +
+      '<h3>Game 2</h3>' +
+      '<p>Game 2 is in development.<br>It will be here once it is ready.</p>' +
     '</div>';
 }
