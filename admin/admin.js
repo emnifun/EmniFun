@@ -245,6 +245,135 @@ function closeModal() {
   }
 }
 
+// Table Rendering & Filtering
+function getFilteredPuzzles() {
+  return adminState.puzzles.filter((p) => {
+    if (adminState.filterStatus !== "all" && p.status !== adminState.filterStatus) {
+      return false;
+    }
+    if (adminState.searchQuery) {
+      const q = adminState.searchQuery.toUpperCase();
+      return p.date.includes(q) || p.answer.toUpperCase().includes(q);
+    }
+    return true;
+  });
+}
+
+function renderTable() {
+  const container = document.querySelector(".admin-table-container");
+  if (!container) return;
+
+  const filteredPuzzles = getFilteredPuzzles();
+
+  if (filteredPuzzles.length === 0) {
+    container.innerHTML = `
+      <div class="admin-empty-state">
+        <p>No puzzles found matching the current criteria.</p>
+        <button id="btn-empty-create" class="button secondary" type="button">Create your first puzzle</button>
+      </div>
+    `;
+    document.getElementById("btn-empty-create")?.addEventListener("click", () => {
+      openModal({ type: "create" });
+    });
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Date (IST)</th>
+          <th>Status</th>
+          <th>Answer</th>
+          <th>Clues (5)</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filteredPuzzles.map(renderPuzzleRow).join("")}
+      </tbody>
+    </table>
+  `;
+
+  attachTableActionHandlers();
+}
+
+function attachTableActionHandlers() {
+  document.querySelectorAll(".btn-edit").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const puzzleId = btn.getAttribute("data-id");
+      const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
+      if (puzzle) openModal({ type: "edit", puzzle });
+    });
+  });
+
+  document.querySelectorAll(".btn-publish").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const puzzleId = btn.getAttribute("data-id");
+      const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
+      if (!puzzle) return;
+
+      openModal({
+        type: "confirm",
+        title: "Publish Puzzle?",
+        message: `Are you sure you want to publish the puzzle for ${puzzle.date} with answer "${puzzle.answer}"? Once published, its content will be locked.`,
+        confirmText: "Publish Now",
+        onConfirm: () => publishPuzzle(puzzleId)
+      });
+    });
+  });
+
+  document.querySelectorAll(".btn-unpublish").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const puzzleId = btn.getAttribute("data-id");
+      const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
+      if (!puzzle) return;
+
+      openModal({
+        type: "confirm",
+        title: "Unpublish Puzzle?",
+        message: `Moving the puzzle for ${puzzle.date} back to draft will make it unavailable to players. Active sessions may be interrupted.`,
+        confirmText: "Unpublish",
+        danger: true,
+        onConfirm: () => unpublishPuzzle(puzzleId)
+      });
+    });
+  });
+
+  document.querySelectorAll(".btn-archive").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const puzzleId = btn.getAttribute("data-id");
+      const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
+      if (!puzzle) return;
+
+      openModal({
+        type: "confirm",
+        title: "Archive Puzzle?",
+        message: `Archive puzzle for ${puzzle.date}? Archived puzzles remain preserved in the database for historical records.`,
+        confirmText: "Archive",
+        onConfirm: () => archivePuzzle(puzzleId)
+      });
+    });
+  });
+
+  document.querySelectorAll(".btn-delete").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const puzzleId = btn.getAttribute("data-id");
+      const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
+      if (!puzzle) return;
+
+      openModal({
+        type: "confirm",
+        title: "Permanently Delete Puzzle?",
+        message: `Are you sure you want to permanently delete the puzzle for ${puzzle.date} with answer "${puzzle.answer}"? This action cannot be undone.`,
+        confirmText: "Delete Permanently",
+        danger: true,
+        onConfirm: () => deletePuzzle(puzzleId)
+      });
+    });
+  });
+}
+
 // Render Functions
 function render() {
   const app = document.getElementById("admin-app");
@@ -299,134 +428,6 @@ function render() {
   }
 
   // Authorized Dashboard
-  function getFilteredPuzzles() {
-    return adminState.puzzles.filter((p) => {
-      if (adminState.filterStatus !== "all" && p.status !== adminState.filterStatus) {
-        return false;
-      }
-      if (adminState.searchQuery) {
-        const q = adminState.searchQuery.toUpperCase();
-        return p.date.includes(q) || p.answer.toUpperCase().includes(q);
-      }
-      return true;
-    });
-  }
-
-  function renderTable() {
-    const container = document.querySelector(".admin-table-container");
-    if (!container) return;
-
-    const filteredPuzzles = getFilteredPuzzles();
-
-    if (filteredPuzzles.length === 0) {
-      container.innerHTML = `
-        <div class="admin-empty-state">
-          <p>No puzzles found matching the current criteria.</p>
-          <button id="btn-empty-create" class="button secondary" type="button">Create your first puzzle</button>
-        </div>
-      `;
-      document.getElementById("btn-empty-create")?.addEventListener("click", () => {
-        openModal({ type: "create" });
-      });
-      return;
-    }
-
-    container.innerHTML = `
-      <table class="admin-table">
-        <thead>
-          <tr>
-            <th>Date (IST)</th>
-            <th>Status</th>
-            <th>Answer</th>
-            <th>Clues (5)</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${filteredPuzzles.map(renderPuzzleRow).join("")}
-        </tbody>
-      </table>
-    `;
-
-    attachTableActionHandlers();
-  }
-
-  function attachTableActionHandlers() {
-    document.querySelectorAll(".btn-edit").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const puzzleId = btn.getAttribute("data-id");
-        const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
-        if (puzzle) openModal({ type: "edit", puzzle });
-      });
-    });
-
-    document.querySelectorAll(".btn-publish").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const puzzleId = btn.getAttribute("data-id");
-        const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
-        if (!puzzle) return;
-
-        openModal({
-          type: "confirm",
-          title: "Publish Puzzle?",
-          message: `Are you sure you want to publish the puzzle for ${puzzle.date} with answer "${puzzle.answer}"? Once published, its content will be locked.`,
-          confirmText: "Publish Now",
-          onConfirm: () => publishPuzzle(puzzleId)
-        });
-      });
-    });
-
-    document.querySelectorAll(".btn-unpublish").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const puzzleId = btn.getAttribute("data-id");
-        const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
-        if (!puzzle) return;
-
-        openModal({
-          type: "confirm",
-          title: "Unpublish Puzzle?",
-          message: `Moving the puzzle for ${puzzle.date} back to draft will make it unavailable to players. Active sessions may be interrupted.`,
-          confirmText: "Unpublish",
-          danger: true,
-          onConfirm: () => unpublishPuzzle(puzzleId)
-        });
-      });
-    });
-
-    document.querySelectorAll(".btn-archive").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const puzzleId = btn.getAttribute("data-id");
-        const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
-        if (!puzzle) return;
-
-        openModal({
-          type: "confirm",
-          title: "Archive Puzzle?",
-          message: `Archive puzzle for ${puzzle.date}? Archived puzzles remain preserved in the database for historical records.`,
-          confirmText: "Archive",
-          onConfirm: () => archivePuzzle(puzzleId)
-        });
-      });
-    });
-
-    document.querySelectorAll(".btn-delete").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const puzzleId = btn.getAttribute("data-id");
-        const puzzle = adminState.puzzles.find((p) => p.puzzleId === puzzleId);
-        if (!puzzle) return;
-
-        openModal({
-          type: "confirm",
-          title: "Permanently Delete Puzzle?",
-          message: `Are you sure you want to permanently delete the puzzle for ${puzzle.date} with answer "${puzzle.answer}"? This action cannot be undone.`,
-          confirmText: "Delete Permanently",
-          danger: true,
-          onConfirm: () => deletePuzzle(puzzleId)
-        });
-      });
-    });
-  }
-
   app.innerHTML = `
     <div class="admin-shell">
       <header class="admin-header">

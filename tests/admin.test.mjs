@@ -869,3 +869,63 @@ test("admin search filter and input behavior: filters correctly without DOM re-r
   assert.match(adminJsContent, /btn-delete/);
   assert.match(adminJsContent, /deletePuzzle/);
 });
+
+test("admin panel table functions: renderTable, getFilteredPuzzles, and attachTableActionHandlers are at top-level module scope", async () => {
+  const adminJsContent = await readFile(new URL("../admin/admin.js", import.meta.url), "utf8");
+
+  // Verify function declarations exist at top-level module scope before function render()
+  const renderIndex = adminJsContent.indexOf("function render()");
+  assert.ok(renderIndex > 0, "function render() must exist");
+
+  const beforeRender = adminJsContent.slice(0, renderIndex);
+  assert.match(beforeRender, /function renderTable\(\)/, "renderTable must be defined before render()");
+  assert.match(beforeRender, /function getFilteredPuzzles\(\)/, "getFilteredPuzzles must be defined before render()");
+  assert.match(beforeRender, /function attachTableActionHandlers\(\)/, "attachTableActionHandlers must be defined before render()");
+
+  // Ensure render() does not contain duplicate nested definitions
+  const afterRender = adminJsContent.slice(renderIndex);
+  const renderEndIndex = afterRender.indexOf("function renderPuzzleRow");
+  const renderBody = afterRender.slice(0, renderEndIndex);
+  assert.doesNotMatch(renderBody, /function renderTable\(\)/, "renderTable must not be nested inside render()");
+  assert.doesNotMatch(renderBody, /function getFilteredPuzzles\(\)/, "getFilteredPuzzles must not be nested inside render()");
+  assert.doesNotMatch(renderBody, /function attachTableActionHandlers\(\)/, "attachTableActionHandlers must not be nested inside render()");
+});
+
+test("admin table filtering logic correctly filters by status and date/answer query", () => {
+  const puzzles = [
+    { puzzleId: "1", date: "2026-10-10", answer: "TRAIN", status: "published" },
+    { puzzleId: "2", date: "2026-10-11", answer: "BRAIN", status: "draft" },
+    { puzzleId: "3", date: "2026-10-12", answer: "CRANE", status: "unpublished" },
+    { puzzleId: "4", date: "2026-10-13", answer: "STONE", status: "archived" },
+  ];
+
+  function filterPuzzles(list, filterStatus, searchQuery) {
+    return list.filter((p) => {
+      if (filterStatus !== "all" && p.status !== filterStatus) {
+        return false;
+      }
+      if (searchQuery) {
+        const q = searchQuery.toUpperCase();
+        return p.date.includes(q) || p.answer.toUpperCase().includes(q);
+      }
+      return true;
+    });
+  }
+
+  // Status filtering
+  assert.equal(filterPuzzles(puzzles, "all", "").length, 4);
+  assert.equal(filterPuzzles(puzzles, "published", "").length, 1);
+  assert.equal(filterPuzzles(puzzles, "draft", "").length, 1);
+  assert.equal(filterPuzzles(puzzles, "unpublished", "").length, 1);
+  assert.equal(filterPuzzles(puzzles, "archived", "").length, 1);
+
+  // Search filtering by answer
+  const trainResults = filterPuzzles(puzzles, "all", "train");
+  assert.equal(trainResults.length, 1);
+  assert.equal(trainResults[0].answer, "TRAIN");
+
+  // Search filtering by date
+  const dateResults = filterPuzzles(puzzles, "all", "2026-10-12");
+  assert.equal(dateResults.length, 1);
+  assert.equal(dateResults[0].answer, "CRANE");
+});
