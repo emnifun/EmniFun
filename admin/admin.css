@@ -285,6 +285,16 @@
   background: #c2410c;
 }
 
+.admin-btn-sm.danger {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+.admin-btn-sm.danger:hover {
+  background: #b91c1c;
+}
+
 /* Modal */
 .admin-modal-overlay {
   position: fixed;

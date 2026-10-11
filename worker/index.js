@@ -13,7 +13,7 @@ import {
   verifyGameToken
 } from "./token.js";
 import { handleAuthRequest, cleanupAuthData } from "./auth.js";
-import { handleAdminRequest } from "./admin.js";
+import { handleAdminRequest, autoPublishDailyPuzzle } from "./admin.js";
 
 const VALID_GUESSES_URL =
   "https://raw.githubusercontent.com/emnifun/EmniFun/main/data/game1/vocabulary/valid-guesses.json";
@@ -764,6 +764,13 @@ export default {
       await cleanupAuthData(env);
     } catch (error) {
       console.error("EmniFun auth cleanup failed", error);
+      controller.noRetry?.();
+    }
+
+    try {
+      await autoPublishDailyPuzzle(env);
+    } catch (error) {
+      console.error("FiveWink auto-publish failed", error);
       controller.noRetry?.();
     }
   }

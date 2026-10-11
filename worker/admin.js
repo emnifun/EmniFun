@@ -6,7 +6,7 @@ function adminJsonResponse(data, status = 200, config, extraHeaders = {}) {
     headers: {
       "Access-Control-Allow-Origin": config.allowedOrigin,
       "Access-Control-Allow-Credentials": "true",
-      "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
       "Vary": "Origin",
       "Content-Type": "application/json; charset=utf-8",
@@ -18,13 +18,15 @@ function adminJsonResponse(data, status = 200, config, extraHeaders = {}) {
   });
 }
 
-function getTodayDateIndia() {
+export const DEFAULT_PUBLICATION_TIMEZONE = "Asia/Kolkata";
+
+export function getPublicationDate(date = new Date(), timeZone = DEFAULT_PUBLICATION_TIMEZONE) {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
-  }).formatToParts(new Date());
+  }).formatToParts(date);
 
   const values = Object.fromEntries(
     parts
@@ -32,7 +34,11 @@ function getTodayDateIndia() {
       .map((part) => [part.type, part.value])
   );
 
-  return values.year + "-" + values.month + "-" + values.day;
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+export function getTodayDateIndia(now = new Date()) {
+  return getPublicationDate(now, DEFAULT_PUBLICATION_TIMEZONE);
 }
 
 function isValidDateString(str) {
@@ -103,6 +109,68 @@ function formatPuzzleRow(row) {
   };
 }
 
+export async function autoPublishDailyPuzzle(env, options = {}) {
+  const timeZone = options.timeZone || DEFAULT_PUBLICATION_TIMEZONE;
+  const currentDate = getPublicationDate(options.now || new Date(), timeZone);
+  const targetDate = options.date || currentDate;
+
+  if (targetDate < currentDate) {
+    return {
+      ok: false,
+      published: false,
+      reason: "past_date_not_allowed",
+      date: targetDate,
+      currentDate
+    };
+  }
+
+  const alreadyPublished = await env.DB.prepare(
+    "SELECT puzzle_id FROM fivewink_puzzles WHERE game = 'game1' AND date = ?1 AND status = 'published' LIMIT 1"
+  )
+    .bind(targetDate)
+    .first();
+
+  if (alreadyPublished) {
+    return { ok: true, published: false, reason: "already_published", puzzleId: alreadyPublished.puzzle_id };
+  }
+
+  const draft = await env.DB.prepare(
+    "SELECT puzzle_id, answer, clues_json, status FROM fivewink_puzzles WHERE game = 'game1' AND date = ?1 AND status = 'draft' LIMIT 1"
+  )
+    .bind(targetDate)
+    .first();
+
+  if (!draft) {
+    return { ok: true, published: false, reason: "no_draft_available" };
+  }
+
+  if (!normalizeAnswer(draft.answer)) {
+    return { ok: false, published: false, reason: "invalid_answer", puzzleId: draft.puzzle_id };
+  }
+
+  let clues = [];
+  try {
+    clues = JSON.parse(draft.clues_json);
+  } catch {
+    return { ok: false, published: false, reason: "invalid_clues_json", puzzleId: draft.puzzle_id };
+  }
+
+  const clueCheck = parseAndValidateClues(clues);
+  if (!clueCheck.ok) {
+    return { ok: false, published: false, reason: clueCheck.message, puzzleId: draft.puzzle_id };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const result = await env.DB.prepare(
+    "UPDATE fivewink_puzzles SET status = 'published', updated_at = ?1 WHERE puzzle_id = ?2 AND status = 'draft'"
+  )
+    .bind(now, draft.puzzle_id)
+    .run();
+
+  const published = result.meta?.changes === 1;
+  return { ok: true, published, puzzleId: draft.puzzle_id, date: targetDate };
+}
+
 export async function handleAdminRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "") || "/";
@@ -120,7 +188,7 @@ export async function handleAdminRequest(request, env) {
       headers: {
         "Access-Control-Allow-Origin": config.allowedOrigin,
         "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
         "Vary": "Origin"
       }
@@ -174,12 +242,39 @@ export async function handleAdminRequest(request, env) {
       return adminJsonResponse({ ok: true, puzzles }, 200, config);
     }
 
-    // 3. Create puzzle
+    // 3. Duplicate check endpoint
+    if (path === "/api/admin/puzzles/duplicates" && request.method === "GET") {
+      const answer = normalizeAnswer(url.searchParams.get("answer"));
+      if (!answer) {
+        return adminJsonResponse({ ok: false, message: "Valid five-letter answer required." }, 400, config);
+      }
+
+      const result = await env.DB.prepare(
+        "SELECT date FROM fivewink_puzzles WHERE answer = ?1 ORDER BY date ASC"
+      )
+        .bind(answer)
+        .all();
+
+      const duplicateDates = (result?.results || []).map((r) => r.date);
+      return adminJsonResponse(
+        {
+          ok: true,
+          answer,
+          isDuplicate: duplicateDates.length > 0,
+          duplicateDates
+        },
+        200,
+        config
+      );
+    }
+
+    // 4. Create puzzle
     if (path === "/api/admin/puzzles" && request.method === "POST") {
       const body = await parseJsonBody(request);
       const date = String(body?.date ?? "").trim();
       const answer = normalizeAnswer(body?.answer);
       const clueResult = parseAndValidateClues(body?.clues);
+      const confirmDuplicate = Boolean(body?.confirmDuplicate || body?.allowDuplicate);
 
       if (!isValidDateString(date)) {
         return adminJsonResponse({ ok: false, message: "Valid date in YYYY-MM-DD format is required." }, 400, config);
@@ -201,6 +296,28 @@ export async function handleAdminRequest(request, env) {
 
       if (existingDate) {
         return adminJsonResponse({ ok: false, message: "A puzzle already exists for this date." }, 409, config);
+      }
+
+      // Check for duplicate answer
+      const existingAnswerRows = await env.DB.prepare(
+        "SELECT date FROM fivewink_puzzles WHERE answer = ?1 ORDER BY date ASC"
+      )
+        .bind(answer)
+        .all();
+
+      const duplicateDates = (existingAnswerRows?.results || []).map((r) => r.date);
+
+      if (duplicateDates.length > 0 && !confirmDuplicate) {
+        return adminJsonResponse(
+          {
+            ok: false,
+            duplicateWarning: true,
+            duplicateDates,
+            message: `This puzzle already exists on:\n${duplicateDates.join("\n")}\n\nDo you still want to create this puzzle?`
+          },
+          409,
+          config
+        );
       }
 
       const puzzleId = crypto.randomUUID();
@@ -228,8 +345,8 @@ export async function handleAdminRequest(request, env) {
       return adminJsonResponse({ ok: true, puzzle: created }, 201, config);
     }
 
-    // 4. Single puzzle routes (GET, PUT, publish, unpublish, archive)
-    const puzzleMatch = path.match(/^\/api\/admin\/puzzles\/([^/]+)(?:\/(publish|unpublish|archive))?$/);
+    // 5. Single puzzle routes (GET, PUT, publish, unpublish, archive, delete)
+    const puzzleMatch = path.match(/^\/api\/admin\/puzzles\/([^/]+)(?:\/(publish|unpublish|archive|delete))?$/);
     if (puzzleMatch) {
       const puzzleId = decodeURIComponent(puzzleMatch[1]);
       const action = puzzleMatch[2];
@@ -301,6 +418,31 @@ export async function handleAdminRequest(request, env) {
           }
         }
 
+        const isAnswerChanged = answer !== puzzle.answer;
+        if (isAnswerChanged) {
+          const existingAnswerRows = await env.DB.prepare(
+            "SELECT date FROM fivewink_puzzles WHERE answer = ?1 AND puzzle_id != ?2 ORDER BY date ASC"
+          )
+            .bind(answer, puzzleId)
+            .all();
+
+          const duplicateDates = (existingAnswerRows?.results || []).map((r) => r.date);
+          const confirmDuplicate = Boolean(body?.confirmDuplicate || body?.allowDuplicate);
+
+          if (duplicateDates.length > 0 && !confirmDuplicate) {
+            return adminJsonResponse(
+              {
+                ok: false,
+                duplicateWarning: true,
+                duplicateDates,
+                message: `This puzzle already exists on:\n${duplicateDates.join("\n")}\n\nDo you still want to save this puzzle?`
+              },
+              409,
+              config
+            );
+          }
+        }
+
         const now = Math.floor(Date.now() / 1000);
 
         await env.DB.prepare(
@@ -336,6 +478,19 @@ export async function handleAdminRequest(request, env) {
         const clueCheck = parseAndValidateClues(puzzle.clues);
         if (!clueCheck.ok) {
           return adminJsonResponse({ ok: false, message: clueCheck.message }, 400, config);
+        }
+
+        if (puzzle.status === "published") {
+          return adminJsonResponse({ ok: false, message: "Puzzle is already published." }, 400, config);
+        }
+
+        const today = getTodayDateIndia();
+        if (puzzle.date < today) {
+          return adminJsonResponse(
+            { ok: false, message: "Past-dated puzzles cannot be newly published." },
+            400,
+            config
+          );
         }
 
         const duplicatePublish = await env.DB.prepare(
@@ -391,6 +546,27 @@ export async function handleAdminRequest(request, env) {
           .run();
 
         return adminJsonResponse({ ok: true, status: "archived" }, 200, config);
+      }
+
+      // DELETE / POST delete permanent deletion
+      if ((action === "delete" && request.method === "POST") || (!action && request.method === "DELETE")) {
+        await env.DB.prepare(
+          "DELETE FROM fivewink_sessions WHERE puzzle_id = ?1"
+        )
+          .bind(puzzleId)
+          .run();
+
+        const delResult = await env.DB.prepare(
+          "DELETE FROM fivewink_puzzles WHERE puzzle_id = ?1"
+        )
+          .bind(puzzleId)
+          .run();
+
+        if (delResult.meta?.changes !== 1) {
+          return adminJsonResponse({ ok: false, message: "Puzzle could not be deleted." }, 500, config);
+        }
+
+        return adminJsonResponse({ ok: true, message: "Puzzle permanently deleted.", deletedPuzzleId: puzzleId }, 200, config);
       }
     }
 

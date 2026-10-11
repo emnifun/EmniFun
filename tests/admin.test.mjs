@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFile } from "node:fs/promises";
 import worker from "../worker/index.js";
+import { getTodayDateIndia, autoPublishDailyPuzzle } from "../worker/admin.js";
 import { __authInternals } from "../worker/auth.js";
 
 const { sessionCookie } = __authInternals;
@@ -469,4 +470,402 @@ test("admin can safely unpublish and archive puzzles", async () => {
     env
   );
   assert.equal(editArchiveRes.status, 409);
+});
+
+test("publication rules: today and future allowed, past rejected, already-published protected", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+
+  await seedAccount(db, { emnifeedId: "EF-admin1", gamerTag: "AdminPlayer", isAdmin: 1 });
+  await seedSession(db, { emnifeedId: "EF-admin1", token: "admin-token-1" });
+
+  const today = getTodayDateIndia();
+  const tomorrow = getTodayDateIndia(new Date(Date.now() + 86400000 * 2));
+  const yesterday = getTodayDateIndia(new Date(Date.now() - 86400000));
+  const olderDate = "2020-01-01";
+
+  // Create draft puzzles
+  const createDraft = async (date, answer) => {
+    const res = await worker.fetch(
+      createAdminRequest("/api/admin/puzzles", {
+        method: "POST",
+        token: "admin-token-1",
+        body: { date, answer, clues: ["c1", "c2", "c3", "c4", "c5"] }
+      }),
+      env
+    );
+    assert.equal(res.status, 201);
+    const data = await res.json();
+    return data.puzzle.puzzleId;
+  };
+
+  const yesterdayId = await createDraft(yesterday, "YESTR");
+  const olderId = await createDraft(olderDate, "OLDER");
+  const todayId = await createDraft(today, "TODAY");
+  const tomorrowId = await createDraft(tomorrow, "TOMOR");
+
+  // 1. Publishing yesterday's puzzle must be rejected with 400
+  const pubYesterdayRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${yesterdayId}/publish`, {
+      method: "POST",
+      token: "admin-token-1"
+    }),
+    env
+  );
+  assert.equal(pubYesterdayRes.status, 400);
+  const pubYesterdayData = await pubYesterdayRes.json();
+  assert.equal(pubYesterdayData.ok, false);
+  assert.match(pubYesterdayData.message, /Past-dated puzzles cannot be newly published/i);
+
+  // 2. Publishing older date puzzle must be rejected with 400
+  const pubOlderRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${olderId}/publish`, {
+      method: "POST",
+      token: "admin-token-1"
+    }),
+    env
+  );
+  assert.equal(pubOlderRes.status, 400);
+  const pubOlderData = await pubOlderRes.json();
+  assert.equal(pubOlderData.ok, false);
+  assert.match(pubOlderData.message, /Past-dated puzzles cannot be newly published/i);
+
+  // 3. Publishing today's puzzle is allowed
+  const pubTodayRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${todayId}/publish`, {
+      method: "POST",
+      token: "admin-token-1"
+    }),
+    env
+  );
+  assert.equal(pubTodayRes.status, 200);
+  const pubTodayData = await pubTodayRes.json();
+  assert.equal(pubTodayData.ok, true);
+  assert.equal(pubTodayData.status, "published");
+
+  // 4. Publishing an already-published puzzle is rejected
+  const pubAlreadyRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${todayId}/publish`, {
+      method: "POST",
+      token: "admin-token-1"
+    }),
+    env
+  );
+  assert.equal(pubAlreadyRes.status, 400);
+  const pubAlreadyData = await pubAlreadyRes.json();
+  assert.equal(pubAlreadyData.ok, false);
+  assert.match(pubAlreadyData.message, /already published/i);
+
+  // 5. Publishing future puzzle is allowed
+  const pubTomorrowRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${tomorrowId}/publish`, {
+      method: "POST",
+      token: "admin-token-1"
+    }),
+    env
+  );
+  assert.equal(pubTomorrowRes.status, 200);
+  const pubTomorrowData = await pubTomorrowRes.json();
+  assert.equal(pubTomorrowData.ok, true);
+  assert.equal(pubTomorrowData.status, "published");
+});
+
+test("automatic publication via cron: publishes today, protects future, protects backdated, idempotent", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+
+  const today = getTodayDateIndia();
+  const tomorrow = getTodayDateIndia(new Date(Date.now() + 86400000 * 2));
+  const yesterday = getTodayDateIndia(new Date(Date.now() - 86400000));
+
+  const now = Math.floor(Date.now() / 1000);
+  const todayId = crypto.randomUUID();
+  const tomorrowId = crypto.randomUUID();
+  const yesterdayId = crypto.randomUUID();
+
+  db.prepare(`
+    INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
+    VALUES (?, 'game1', ?, 'TODAY', '["c1","c2","c3","c4","c5"]', 'draft', ?, ?)
+  `).run(todayId, today, now, now);
+
+  db.prepare(`
+    INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
+    VALUES (?, 'game1', ?, 'TOMOR', '["c1","c2","c3","c4","c5"]', 'draft', ?, ?)
+  `).run(tomorrowId, tomorrow, now, now);
+
+  db.prepare(`
+    INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
+    VALUES (?, 'game1', ?, 'YESTR', '["c1","c2","c3","c4","c5"]', 'draft', ?, ?)
+  `).run(yesterdayId, yesterday, now, now);
+
+  // Trigger worker scheduled handler
+  await worker.scheduled({}, env);
+
+  // Verify today is published
+  const todayRow = db.prepare("SELECT status FROM fivewink_puzzles WHERE puzzle_id = ?").get(todayId);
+  assert.equal(todayRow.status, "published");
+
+  // Verify tomorrow was NOT published early
+  const tomorrowRow = db.prepare("SELECT status FROM fivewink_puzzles WHERE puzzle_id = ?").get(tomorrowId);
+  assert.equal(tomorrowRow.status, "draft");
+
+  // Verify yesterday was NOT published
+  const yesterdayRow = db.prepare("SELECT status FROM fivewink_puzzles WHERE puzzle_id = ?").get(yesterdayId);
+  assert.equal(yesterdayRow.status, "draft");
+
+  // Second cron run (e.g. hourly fallback) is idempotent
+  await worker.scheduled({}, env);
+
+  const todayRow2 = db.prepare("SELECT status FROM fivewink_puzzles WHERE puzzle_id = ?").get(todayId);
+  assert.equal(todayRow2.status, "published");
+  const tomorrowRow2 = db.prepare("SELECT status FROM fivewink_puzzles WHERE puzzle_id = ?").get(tomorrowId);
+  assert.equal(tomorrowRow2.status, "draft");
+  const yesterdayRow2 = db.prepare("SELECT status FROM fivewink_puzzles WHERE puzzle_id = ?").get(yesterdayId);
+  assert.equal(yesterdayRow2.status, "draft");
+
+  // Invariant test: calling autoPublishDailyPuzzle directly with an explicit past target date must be refused
+  const pastAutoPubResult = await autoPublishDailyPuzzle(env, { date: yesterday });
+  assert.equal(pastAutoPubResult.ok, false);
+  assert.equal(pastAutoPubResult.published, false);
+  assert.equal(pastAutoPubResult.reason, "past_date_not_allowed");
+
+  const yesterdayRowAfterExplicit = db.prepare("SELECT status FROM fivewink_puzzles WHERE puzzle_id = ?").get(yesterdayId);
+  assert.equal(yesterdayRowAfterExplicit.status, "draft");
+});
+
+test("duplicate answers: warning returned with all existing dates, creation allowed with confirmation, case-insensitive", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+
+  await seedAccount(db, { emnifeedId: "EF-admin1", gamerTag: "OwnerAdmin", isAdmin: 1 });
+  await seedSession(db, { emnifeedId: "EF-admin1", token: "admin-token-1" });
+
+  // 1. Create first puzzle with "plant" on 2026-10-12
+  const p1Res = await worker.fetch(
+    createAdminRequest("/api/admin/puzzles", {
+      method: "POST",
+      token: "admin-token-1",
+      body: { date: "2026-10-12", answer: "plant", clues: ["c1", "c2", "c3", "c4", "c5"] }
+    }),
+    env
+  );
+  assert.equal(p1Res.status, 201);
+  const p1Data = await p1Res.json();
+  assert.equal(p1Data.puzzle.answer, "PLANT");
+
+  // 2. Attempt to create second puzzle with same answer "Plant" on 2026-11-03 without confirmation
+  const p2WarnRes = await worker.fetch(
+    createAdminRequest("/api/admin/puzzles", {
+      method: "POST",
+      token: "admin-token-1",
+      body: { date: "2026-11-03", answer: "Plant", clues: ["c1", "c2", "c3", "c4", "c5"] }
+    }),
+    env
+  );
+  assert.equal(p2WarnRes.status, 409);
+  const p2WarnData = await p2WarnRes.json();
+  assert.equal(p2WarnData.ok, false);
+  assert.equal(p2WarnData.duplicateWarning, true);
+  assert.deepEqual(p2WarnData.duplicateDates, ["2026-10-12"]);
+  assert.match(p2WarnData.message, /already exists on/i);
+
+  // Verify 2026-11-03 was NOT created in DB
+  const checkP2 = db.prepare("SELECT * FROM fivewink_puzzles WHERE date = '2026-11-03'").get();
+  assert.equal(checkP2, undefined);
+
+  // 3. Create second puzzle WITH confirmDuplicate: true
+  const p2ConfirmRes = await worker.fetch(
+    createAdminRequest("/api/admin/puzzles", {
+      method: "POST",
+      token: "admin-token-1",
+      body: { date: "2026-11-03", answer: "Plant", clues: ["c1", "c2", "c3", "c4", "c5"], confirmDuplicate: true }
+    }),
+    env
+  );
+  assert.equal(p2ConfirmRes.status, 201);
+  const p2ConfirmData = await p2ConfirmRes.json();
+  assert.equal(p2ConfirmData.puzzle.answer, "PLANT");
+
+  // 4. Attempt to create third puzzle with "PLANT" on 2026-12-01 -> returns both previous dates
+  const p3WarnRes = await worker.fetch(
+    createAdminRequest("/api/admin/puzzles", {
+      method: "POST",
+      token: "admin-token-1",
+      body: { date: "2026-12-01", answer: "PLANT", clues: ["c1", "c2", "c3", "c4", "c5"] }
+    }),
+    env
+  );
+  assert.equal(p3WarnRes.status, 409);
+  const p3WarnData = await p3WarnRes.json();
+  assert.deepEqual(p3WarnData.duplicateDates, ["2026-10-12", "2026-11-03"]);
+
+  // 5. Query duplicates endpoint directly
+  const dupCheckRes = await worker.fetch(
+    createAdminRequest("/api/admin/puzzles/duplicates?answer=plant", {
+      method: "GET",
+      token: "admin-token-1"
+    }),
+    env
+  );
+  assert.equal(dupCheckRes.status, 200);
+  const dupCheckData = await dupCheckRes.json();
+  assert.equal(dupCheckData.isDuplicate, true);
+  assert.deepEqual(dupCheckData.duplicateDates, ["2026-10-12", "2026-11-03"]);
+
+  // 6. Editing puzzle 1 with the same normalized answer ("Plant") -> no duplicate warning
+  const editSameRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${p1Data.puzzle.puzzleId}`, {
+      method: "PUT",
+      token: "admin-token-1",
+      body: { date: "2026-10-12", answer: "Plant", clues: ["n1", "c2", "c3", "c4", "c5"] }
+    }),
+    env
+  );
+  assert.equal(editSameRes.status, 200);
+
+  // 7. Create another puzzle with answer "CRANE" on 2026-12-25
+  const craneRes = await worker.fetch(
+    createAdminRequest("/api/admin/puzzles", {
+      method: "POST",
+      token: "admin-token-1",
+      body: { date: "2026-12-25", answer: "CRANE", clues: ["c1", "c2", "c3", "c4", "c5"] }
+    }),
+    env
+  );
+  assert.equal(craneRes.status, 201);
+
+  // 8. Attempt to edit puzzle 1 to "crane" (different from current answer, exists on 2026-12-25) without confirmation -> 409 warning
+  const editCraneWarnRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${p1Data.puzzle.puzzleId}`, {
+      method: "PUT",
+      token: "admin-token-1",
+      body: { date: "2026-10-12", answer: "crane", clues: ["n1", "c2", "c3", "c4", "c5"] }
+    }),
+    env
+  );
+  assert.equal(editCraneWarnRes.status, 409);
+  const editCraneWarnData = await editCraneWarnRes.json();
+  assert.equal(editCraneWarnData.duplicateWarning, true);
+  assert.deepEqual(editCraneWarnData.duplicateDates, ["2026-12-25"]);
+
+  // 9. Edit puzzle 1 to "crane" WITH confirmDuplicate: true -> 200 success
+  const editCraneConfirmRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${p1Data.puzzle.puzzleId}`, {
+      method: "PUT",
+      token: "admin-token-1",
+      body: { date: "2026-10-12", answer: "crane", clues: ["n1", "c2", "c3", "c4", "c5"], confirmDuplicate: true }
+    }),
+    env
+  );
+  assert.equal(editCraneConfirmRes.status, 200);
+  assert.equal((await editCraneConfirmRes.json()).puzzle.answer, "CRANE");
+});
+
+test("permanent puzzle deletion: draft, published, and archived deleted safely, non-admin blocked", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+
+  await seedAccount(db, { emnifeedId: "EF-admin1", gamerTag: "OwnerAdmin", isAdmin: 1 });
+  await seedSession(db, { emnifeedId: "EF-admin1", token: "admin-token" });
+
+  await seedAccount(db, { emnifeedId: "EF-user1", gamerTag: "NormalPlayer", isAdmin: 0 });
+  await seedSession(db, { emnifeedId: "EF-user1", token: "user-token" });
+
+  const now = Math.floor(Date.now() / 1000);
+  const p1Id = crypto.randomUUID(); // draft
+  const p2Id = crypto.randomUUID(); // published
+  const p3Id = crypto.randomUUID(); // archived
+  const p4Id = crypto.randomUUID(); // unrelated draft
+
+  db.prepare(`
+    INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
+    VALUES (?, 'game1', '2026-12-10', 'DRAFT', '["1","2","3","4","5"]', 'draft', ?, ?)
+  `).run(p1Id, now, now);
+
+  db.prepare(`
+    INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
+    VALUES (?, 'game1', '2026-12-11', 'PUBED', '["1","2","3","4","5"]', 'published', ?, ?)
+  `).run(p2Id, now, now);
+
+  db.prepare(`
+    INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
+    VALUES (?, 'game1', '2026-12-12', 'ARCHV', '["1","2","3","4","5"]', 'archived', ?, ?)
+  `).run(p3Id, now, now);
+
+  db.prepare(`
+    INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
+    VALUES (?, 'game1', '2026-12-13', 'OTHER', '["1","2","3","4","5"]', 'draft', ?, ?)
+  `).run(p4Id, now, now);
+
+  // Associated sessions for p1 and p2
+  const s1Id = crypto.randomUUID();
+  const s2Id = crypto.randomUUID();
+  db.prepare(`
+    INSERT INTO fivewink_sessions (session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json, clues_used, status, version, created_at, updated_at, expires_at)
+    VALUES (?, ?, 'game1', '2026-12-10', '[]', '[]', '[]', 0, 'playing', 1, ?, ?, ?)
+  `).run(s1Id, p1Id, now, now, now + 3600);
+  db.prepare(`
+    INSERT INTO fivewink_sessions (session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json, clues_used, status, version, created_at, updated_at, expires_at)
+    VALUES (?, ?, 'game1', '2026-12-11', '[]', '[]', '[]', 0, 'playing', 1, ?, ?, ?)
+  `).run(s2Id, p2Id, now, now, now + 3600);
+
+  // 1. Non-admin cannot delete
+  const userDelRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${p1Id}`, { method: "DELETE", token: "user-token" }),
+    env
+  );
+  assert.equal(userDelRes.status, 403);
+  assert.ok(db.prepare("SELECT puzzle_id FROM fivewink_puzzles WHERE puzzle_id = ?").get(p1Id));
+
+  // 2. Nonexistent puzzle returns 404
+  const notFoundRes = await worker.fetch(
+    createAdminRequest("/api/admin/puzzles/nonexistent-id", { method: "DELETE", token: "admin-token" }),
+    env
+  );
+  assert.equal(notFoundRes.status, 404);
+
+  // 3. Admin deletes draft puzzle p1
+  const delP1Res = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${p1Id}`, { method: "DELETE", token: "admin-token" }),
+    env
+  );
+  assert.equal(delP1Res.status, 200);
+  assert.equal(db.prepare("SELECT puzzle_id FROM fivewink_puzzles WHERE puzzle_id = ?").get(p1Id), undefined);
+  assert.equal(db.prepare("SELECT session_id FROM fivewink_sessions WHERE session_id = ?").get(s1Id), undefined);
+
+  // 4. Admin deletes published puzzle p2
+  const delP2Res = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${p2Id}`, { method: "DELETE", token: "admin-token" }),
+    env
+  );
+  assert.equal(delP2Res.status, 200);
+  assert.equal(db.prepare("SELECT puzzle_id FROM fivewink_puzzles WHERE puzzle_id = ?").get(p2Id), undefined);
+  assert.equal(db.prepare("SELECT session_id FROM fivewink_sessions WHERE session_id = ?").get(s2Id), undefined);
+
+  // 5. Admin deletes archived puzzle p3
+  const delP3Res = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${p3Id}`, { method: "DELETE", token: "admin-token" }),
+    env
+  );
+  assert.equal(delP3Res.status, 200);
+  assert.equal(db.prepare("SELECT puzzle_id FROM fivewink_puzzles WHERE puzzle_id = ?").get(p3Id), undefined);
+
+  // 6. Unrelated puzzle p4 is untouched
+  const p4Row = db.prepare("SELECT * FROM fivewink_puzzles WHERE puzzle_id = ?").get(p4Id);
+  assert.ok(p4Row);
+  assert.equal(p4Row.answer, "OTHER");
+});
+
+test("admin search filter and input behavior: filters correctly without DOM re-render cursor bug", async () => {
+  const adminJsContent = await readFile(new URL("../admin/admin.js", import.meta.url), "utf8");
+
+  // Ensure render() is not called on input events of #input-search
+  // Instead, renderTable() is called which preserves the search input DOM element and cursor
+  assert.match(adminJsContent, /searchInput\?\.addEventListener\("input",/);
+  assert.match(adminJsContent, /renderTable\(\)/);
+  assert.doesNotMatch(adminJsContent, /searchInput\?\.addEventListener\("input",[^}]*render\(\);[^}]*focus\(\)/);
+
+  // Verify delete button is present in puzzle row actions
+  assert.match(adminJsContent, /btn-delete/);
+  assert.match(adminJsContent, /deletePuzzle/);
 });
