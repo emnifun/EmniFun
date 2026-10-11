@@ -1597,6 +1597,79 @@ export async function handleAuthRequest(request, env) {
   }
 }
 
+export async function authenticateAdmin(request, env) {
+  let config;
+  try {
+    config = authConfig(env);
+  } catch (error) {
+    return {
+      ok: false,
+      response: new Response(
+        JSON.stringify({ ok: false, message: error.message || "Authentication is not configured." }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff"
+          }
+        }
+      )
+    };
+  }
+
+  if (!assertAllowedOrigin(request, config)) {
+    return {
+      ok: false,
+      response: jsonResponse({ ok: false, message: "Forbidden." }, 403, config)
+    };
+  }
+
+  try {
+    await enforceRateLimit(request, env, "general");
+  } catch (error) {
+    const status = Number.isInteger(error?.status) ? error.status : 503;
+    return {
+      ok: false,
+      response: jsonResponse({ ok: false, message: error.message }, status, config)
+    };
+  }
+
+  const session = await loadSession(env, request);
+  if (!session) {
+    return {
+      ok: false,
+      response: jsonResponse({ ok: false, message: "Authentication required." }, 401, config)
+    };
+  }
+
+  const account = await env.DB.prepare(
+    `SELECT emnifeed_id, gamer_tag, is_admin FROM accounts WHERE emnifeed_id = ?1 LIMIT 1`
+  )
+    .bind(session.emnifeed_id)
+    .first();
+
+  if (!account || account.is_admin !== 1) {
+    return {
+      ok: false,
+      response: jsonResponse({ ok: false, message: "Administrator access required." }, 403, config)
+    };
+  }
+
+  return {
+    ok: true,
+    session: {
+      sessionId: session.session_id,
+      emnifeedId: session.emnifeed_id,
+      gamerTag: account.gamer_tag,
+      isAdmin: true
+    },
+    config
+  };
+}
+
+export { authConfig };
+
 export const __authInternals = Object.freeze({
   normalizeGamerTag,
   gamerTagKey,

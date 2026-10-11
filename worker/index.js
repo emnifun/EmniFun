@@ -13,6 +13,7 @@ import {
   verifyGameToken
 } from "./token.js";
 import { handleAuthRequest, cleanupAuthData } from "./auth.js";
+import { handleAdminRequest } from "./admin.js";
 
 const VALID_GUESSES_URL =
   "https://raw.githubusercontent.com/emnifun/EmniFun/main/data/game1/vocabulary/valid-guesses.json";
@@ -703,6 +704,10 @@ async function handleRequest(request, env) {
 
   if (path.startsWith("/api/auth/") || path === "/api/account/vault") {
     return handleAuthRequest(request, env);
+  }
+
+  if (path.startsWith("/api/admin")) {
+    return handleAdminRequest(request, env);
   }
 
   if (request.method === "OPTIONS") {
