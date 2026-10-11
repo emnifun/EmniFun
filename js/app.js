@@ -30,7 +30,7 @@ const PRIMARY_ROUTES = new Set([
   "login",
   "account"
 ]);
-const GAME_ROUTES = new Set(["games/game1", "games/game2", "games/game3"]);
+const GAME_ROUTES = new Set(["games/game1"]);
 const ACCOUNT_ROUTES = new Set(["account", "account/vault"]);
 const ROUTES = new Set([
   ...PRIMARY_ROUTES,
@@ -102,29 +102,18 @@ function navigateTo(route) {
 
 function renderRoute(route) {
   const currentRoute = resolveAuthRoute(route);
-  if (currentRoute === "games") {
-    navigateTo("games/game1");
-    return;
-  }
   const isGame1 = currentRoute === "games/game1";
-  const isGame2 = currentRoute === "games/game2";
-  const isGame3 = currentRoute === "games/game3";
-  const isAnyGame = GAME_ROUTES.has(currentRoute);
   const isAccount = ACCOUNT_ROUTES.has(currentRoute);
-  const viewId = isAnyGame ? "games" : isAccount ? "account" : currentRoute;
+  const viewId = isGame1 ? "games" : isAccount ? "account" : currentRoute;
 
   document.title =
     isGame1
       ? "FiveWink — EmniFun"
-      : isGame2
-        ? "Game 2 — EmniFun"
-        : isGame3
-          ? "Game 3 — EmniFun"
-          : currentRoute === "account/vault"
-            ? "Recovery Vault — EmniFun"
-            : currentRoute === "account"
-              ? "Account — EmniFun"
-              : "EmniFun";
+      : currentRoute === "account/vault"
+        ? "Recovery Vault — EmniFun"
+        : currentRoute === "account"
+          ? "Account — EmniFun"
+          : "EmniFun";
 
   if (getRouteFromHash() !== currentRoute) {
     window.history.replaceState(null, "", `#${currentRoute}`);
@@ -138,32 +127,24 @@ function renderRoute(route) {
     const linkRoute = link.dataset.view;
     const active =
       linkRoute === viewId ||
-      (linkRoute === "games" && isAnyGame) ||
       (linkRoute === "account" && isAccount) ||
       (link.dataset.navAuth === "true" && isAccount);
     link.classList.toggle("active", active);
   });
 
-  const gameTabs = [...document.querySelectorAll(".game-tab")];
-  gameTabs.forEach((tab) => {
-    const isTabActive = tab.dataset.gameTab === currentRoute;
-    tab.classList.toggle("active", isTabActive);
-    tab.setAttribute("aria-selected", isTabActive ? "true" : "false");
-  });
-
   closeMobileNavigation();
 
   if (viewId === "games") {
-    gamesView.classList.add("game-playing");
     if (isGame1) {
+      gamesView.classList.add("game-playing");
       void renderGame1(gameArea);
-    } else if (isGame2) {
-      renderGame2(gameArea);
-    } else if (isGame3) {
-      renderGame3(gameArea);
+    } else {
+      gamesView.classList.remove("game-playing");
+      renderGames();
     }
   } else if (gamesView.classList.contains("game-playing")) {
     gamesView.classList.remove("game-playing");
+    renderGames();
   }
 
   if (viewId === "statistics") {
@@ -251,12 +232,6 @@ function setupNavigation() {
 
   document.querySelectorAll("[data-go-games]").forEach((button) => {
     button.addEventListener("click", () => navigateTo("games"));
-  });
-
-  document.querySelectorAll(".game-tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      navigateTo(tab.dataset.gameTab);
-    });
   });
 
   gameArea.addEventListener("game1-back", () => {

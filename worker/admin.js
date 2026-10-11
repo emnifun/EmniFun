@@ -6,7 +6,7 @@ function adminJsonResponse(data, status = 200, config, extraHeaders = {}) {
     headers: {
       "Access-Control-Allow-Origin": config.allowedOrigin,
       "Access-Control-Allow-Credentials": "true",
-      "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
       "Vary": "Origin",
       "Content-Type": "application/json; charset=utf-8",
@@ -18,9 +18,9 @@ function adminJsonResponse(data, status = 200, config, extraHeaders = {}) {
   });
 }
 
-export function getReleaseDate(timeZone = "Asia/Kolkata") {
+function getTodayDateIndia() {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
+    timeZone: "Asia/Kolkata",
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
@@ -33,10 +33,6 @@ export function getReleaseDate(timeZone = "Asia/Kolkata") {
   );
 
   return values.year + "-" + values.month + "-" + values.day;
-}
-
-export function getTodayDateIndia() {
-  return getReleaseDate("Asia/Kolkata");
 }
 
 function isValidDateString(str) {
@@ -124,7 +120,7 @@ export async function handleAdminRequest(request, env) {
       headers: {
         "Access-Control-Allow-Origin": config.allowedOrigin,
         "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
         "Vary": "Origin"
       }
@@ -396,23 +392,6 @@ export async function handleAdminRequest(request, env) {
 
         return adminJsonResponse({ ok: true, status: "archived" }, 200, config);
       }
-
-      // DELETE permanent delete (for testing phase)
-      if (!action && request.method === "DELETE") {
-        await env.DB.prepare(
-          "DELETE FROM fivewink_sessions WHERE puzzle_id = ?1"
-        )
-          .bind(puzzleId)
-          .run();
-
-        await env.DB.prepare(
-          "DELETE FROM fivewink_puzzles WHERE puzzle_id = ?1"
-        )
-          .bind(puzzleId)
-          .run();
-
-        return adminJsonResponse({ ok: true, deleted: true, puzzleId }, 200, config);
-      }
     }
 
     return adminJsonResponse({ ok: false, message: "Admin endpoint not found." }, 404, config);
@@ -424,81 +403,4 @@ export async function handleAdminRequest(request, env) {
       config
     );
   }
-}
-
-export async function autoPublishTodayPuzzle(env) {
-  if (!env?.DB) {
-    return { ok: false, published: false, reason: "db_unconfigured" };
-  }
-
-  const today = getTodayDateIndia();
-
-  const puzzle = await env.DB.prepare(
-    `SELECT puzzle_id, game, date, answer, clues_json, status
-       FROM fivewink_puzzles
-      WHERE date = ?1
-      LIMIT 1`
-  )
-    .bind(today)
-    .first();
-
-  if (!puzzle) {
-    return { ok: true, published: false, reason: "no_puzzle" };
-  }
-
-  if (puzzle.status === "published") {
-    return { ok: true, published: false, reason: "already_published" };
-  }
-
-  if (puzzle.status === "archived") {
-    return { ok: true, published: false, reason: "archived" };
-  }
-
-  if (puzzle.status !== "draft") {
-    return { ok: true, published: false, reason: "not_draft" };
-  }
-
-  // Validate answer is 5 letters
-  if (!normalizeAnswer(puzzle.answer)) {
-    return { ok: false, published: false, reason: "invalid_answer" };
-  }
-
-  // Validate clues
-  let clues;
-  try {
-    clues = JSON.parse(puzzle.clues_json);
-  } catch {
-    return { ok: false, published: false, reason: "invalid_clues_json" };
-  }
-
-  const clueCheck = parseAndValidateClues(clues);
-  if (!clueCheck.ok) {
-    return { ok: false, published: false, reason: "invalid_clues" };
-  }
-
-  // Ensure no other puzzle is already published for today
-  const duplicate = await env.DB.prepare(
-    `SELECT puzzle_id FROM fivewink_puzzles WHERE date = ?1 AND status = 'published' AND puzzle_id != ?2 LIMIT 1`
-  )
-    .bind(today, puzzle.puzzle_id)
-    .first();
-
-  if (duplicate) {
-    return { ok: false, published: false, reason: "duplicate_published" };
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-
-  const result = await env.DB.prepare(
-    `UPDATE fivewink_puzzles
-        SET status = 'published',
-            updated_at = ?1
-      WHERE puzzle_id = ?2
-        AND status = 'draft'`
-  )
-    .bind(now, puzzle.puzzle_id)
-    .run();
-
-  const published = (result?.meta?.changes ?? 0) === 1;
-  return { ok: true, published, puzzleId: puzzle.puzzle_id, date: today };
 }
