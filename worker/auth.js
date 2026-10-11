@@ -389,7 +389,8 @@ async function credentialReplayHash(credential) {
 
 function publicAccount(row) {
   return {
-    gamerTag: row.gamer_tag
+    gamerTag: row.gamer_tag,
+    isAdmin: row.is_admin === 1
   };
 }
 
@@ -467,7 +468,7 @@ async function loadSession(env, request) {
   const now = Math.floor(Date.now() / 1000);
   const row = await env.DB.prepare(
     `SELECT s.session_id, s.emnifeed_id, s.expires_at,
-            a.gamer_tag, a.last_active_at
+            a.gamer_tag, a.last_active_at, a.is_admin
        FROM auth_sessions s
        JOIN accounts a ON a.emnifeed_id = s.emnifeed_id
       WHERE s.token_hash = ?1
@@ -737,7 +738,7 @@ async function handleGoogleAuth(request, env, config) {
   }
 
   const account = await env.DB.prepare(
-    `SELECT a.emnifeed_id, a.gamer_tag, a.last_active_at
+    `SELECT a.emnifeed_id, a.gamer_tag, a.last_active_at, a.is_admin
        FROM google_identities g
        JOIN accounts a ON a.emnifeed_id = g.emnifeed_id
       WHERE g.google_sub = ?1
@@ -980,7 +981,7 @@ async function handleRegister(request, env, config) {
   const response = jsonResponse(
     {
       ok: true,
-      user: { gamerTag },
+      user: { gamerTag, isAdmin: false },
       accountCreated: true
     },
     201,
@@ -1152,7 +1153,7 @@ async function handleRecoveryComplete(request, env, config) {
   }
 
   const account = await env.DB.prepare(
-    `SELECT emnifeed_id, gamer_tag, google_changed_at
+    `SELECT emnifeed_id, gamer_tag, google_changed_at, is_admin
        FROM accounts
       WHERE emnifeed_id = ?1
       LIMIT 1`

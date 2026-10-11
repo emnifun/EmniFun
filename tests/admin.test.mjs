@@ -395,7 +395,7 @@ test("duplicate daily publication is prevented", async () => {
   const p2Id = crypto.randomUUID();
   db.prepare(`
     INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
-    VALUES (?, 'game1', ?, 'SECND', '["1","2","3","4","5"]', 'draft', 100, 100)
+    VALUES (?, 'game1', ?, 'STONE', '["1","2","3","4","5"]', 'draft', 100, 100)
   `).run(p2Id, date);
 
   // Try to publish p2 for same date -> must fail with 409
@@ -499,10 +499,10 @@ test("publication rules: today and future allowed, past rejected, already-publis
     return data.puzzle.puzzleId;
   };
 
-  const yesterdayId = await createDraft(yesterday, "YESTR");
+  const yesterdayId = await createDraft(yesterday, "EARLY");
   const olderId = await createDraft(olderDate, "OLDER");
   const todayId = await createDraft(today, "TODAY");
-  const tomorrowId = await createDraft(tomorrow, "TOMOR");
+  const tomorrowId = await createDraft(tomorrow, "AFTER");
 
   // 1. Publishing yesterday's puzzle must be rejected with 400
   const pubYesterdayRes = await worker.fetch(
@@ -590,12 +590,12 @@ test("automatic publication via cron: publishes today, protects future, protects
 
   db.prepare(`
     INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
-    VALUES (?, 'game1', ?, 'TOMOR', '["c1","c2","c3","c4","c5"]', 'draft', ?, ?)
+    VALUES (?, 'game1', ?, 'AFTER', '["c1","c2","c3","c4","c5"]', 'draft', ?, ?)
   `).run(tomorrowId, tomorrow, now, now);
 
   db.prepare(`
     INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
-    VALUES (?, 'game1', ?, 'YESTR', '["c1","c2","c3","c4","c5"]', 'draft', ?, ?)
+    VALUES (?, 'game1', ?, 'EARLY', '["c1","c2","c3","c4","c5"]', 'draft', ?, ?)
   `).run(yesterdayId, yesterday, now, now);
 
   // Trigger worker scheduled handler
@@ -928,4 +928,224 @@ test("admin table filtering logic correctly filters by status and date/answer qu
   const dateResults = filterPuzzles(puzzles, "all", "2026-10-12");
   assert.equal(dateResults.length, 1);
   assert.equal(dateResults[0].answer, "CRANE");
+});
+
+test("vocabulary validation: only words from 16,273-word authoritative list are accepted on create, edit, publish, auto-publish", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+
+  await seedAccount(db, { emnifeedId: "EF-admin1", gamerTag: "OwnerAdmin", isAdmin: 1 });
+  await seedSession(db, { emnifeedId: "EF-admin1", token: "admin-token-1" });
+
+  // 1. Create with non-vocabulary 5-letter string is rejected with 400
+  const badCreateRes = await worker.fetch(
+    createAdminRequest("/api/admin/puzzles", {
+      method: "POST",
+      token: "admin-token-1",
+      body: { date: "2026-12-01", answer: "DHFKI", clues: ["c1", "c2", "c3", "c4", "c5"] }
+    }),
+    env
+  );
+  assert.equal(badCreateRes.status, 400);
+  const badCreateData = await badCreateRes.json();
+  assert.equal(badCreateData.ok, false);
+  assert.match(badCreateData.message, /valid 5-letter word/i);
+
+  // 2. Create with authoritative vocabulary word succeeds with 201
+  const goodCreateRes = await worker.fetch(
+    createAdminRequest("/api/admin/puzzles", {
+      method: "POST",
+      token: "admin-token-1",
+      body: { date: "2026-12-01", answer: "PLANT", clues: ["c1", "c2", "c3", "c4", "c5"] }
+    }),
+    env
+  );
+  assert.equal(goodCreateRes.status, 201);
+  const goodCreateData = await goodCreateRes.json();
+  const puzzleId = goodCreateData.puzzle.puzzleId;
+
+  // 3. Edit puzzle with non-vocabulary answer is rejected with 400
+  const badEditRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${puzzleId}`, {
+      method: "PUT",
+      token: "admin-token-1",
+      body: { date: "2026-12-01", answer: "ZXCVB", clues: ["c1", "c2", "c3", "c4", "c5"] }
+    }),
+    env
+  );
+  assert.equal(badEditRes.status, 400);
+  const badEditData = await badEditRes.json();
+  assert.equal(badEditData.ok, false);
+  assert.match(badEditData.message, /valid 5-letter word/i);
+
+  // 4. Directly inserted puzzle with non-vocabulary answer fails publish with 400
+  const invalidPuzId = crypto.randomUUID();
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(`
+    INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
+    VALUES (?, 'game1', '2026-12-05', 'QWERT', '["1","2","3","4","5"]', 'draft', ?, ?)
+  `).run(invalidPuzId, now, now);
+
+  const badPubRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${invalidPuzId}/publish`, {
+      method: "POST",
+      token: "admin-token-1"
+    }),
+    env
+  );
+  assert.equal(badPubRes.status, 400);
+  const badPubData = await badPubRes.json();
+  assert.equal(badPubData.ok, false);
+  assert.match(badPubData.message, /valid 5-letter word/i);
+
+  // 5. autoPublishDailyPuzzle refuses to publish invalid vocabulary word
+  const today = getTodayDateIndia();
+  const badDraftId = crypto.randomUUID();
+  db.prepare(`
+    INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
+    VALUES (?, 'game1', ?, 'XYZQQ', '["1","2","3","4","5"]', 'draft', ?, ?)
+  `).run(badDraftId, today, now, now);
+
+  const autoResult = await autoPublishDailyPuzzle(env, { date: today });
+  assert.equal(autoResult.ok, false);
+  assert.equal(autoResult.published, false);
+  assert.equal(autoResult.reason, "invalid_vocabulary_word");
+  assert.equal(autoResult.puzzleId, badDraftId);
+});
+
+test("permanent puzzle deletion cleanly cascades and leaves zero sessions in fivewink_sessions", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+
+  await seedAccount(db, { emnifeedId: "EF-admin1", gamerTag: "OwnerAdmin", isAdmin: 1 });
+  await seedSession(db, { emnifeedId: "EF-admin1", token: "admin-token" });
+
+  const now = Math.floor(Date.now() / 1000);
+  const puzzleId = crypto.randomUUID();
+
+  db.prepare(`
+    INSERT INTO fivewink_puzzles (puzzle_id, game, date, answer, clues_json, status, created_at, updated_at)
+    VALUES (?, 'game1', '2026-12-20', 'STONE', '["1","2","3","4","5"]', 'published', ?, ?)
+  `).run(puzzleId, now, now);
+
+  // Insert 3 separate game sessions referencing this puzzle
+  for (let i = 0; i < 3; i += 1) {
+    db.prepare(`
+      INSERT INTO fivewink_sessions (session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json, clues_used, status, version, created_at, updated_at, expires_at)
+      VALUES (?, ?, 'game1', '2026-12-20', '[]', '[]', '[]', 0, 'playing', 1, ?, ?, ?)
+    `).run(crypto.randomUUID(), puzzleId, now, now, now + 3600);
+  }
+
+  const preSessionCount = db.prepare("SELECT COUNT(*) as count FROM fivewink_sessions WHERE puzzle_id = ?").get(puzzleId);
+  assert.equal(Number(preSessionCount.count), 3);
+
+  // Admin deletes puzzle permanently
+  const deleteRes = await worker.fetch(
+    createAdminRequest(`/api/admin/puzzles/${puzzleId}`, {
+      method: "DELETE",
+      token: "admin-token"
+    }),
+    env
+  );
+  assert.equal(deleteRes.status, 200);
+
+  // Verify complete cascading deletion: exactly zero sessions remain
+  const postSessionCount = db.prepare("SELECT COUNT(*) as count FROM fivewink_sessions WHERE puzzle_id = ?").get(puzzleId);
+  assert.equal(Number(postSessionCount.count), 0);
+
+  const postPuzzle = db.prepare("SELECT puzzle_id FROM fivewink_puzzles WHERE puzzle_id = ?").get(puzzleId);
+  assert.equal(postPuzzle, undefined);
+});
+
+test("auth /me and publicAccount expose isAdmin boolean correctly based on is_admin = 1", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+
+  await seedAccount(db, { emnifeedId: "EF-admin1", gamerTag: "OwnerAdmin", isAdmin: 1 });
+  await seedSession(db, { emnifeedId: "EF-admin1", token: "admin-session-token" });
+
+  await seedAccount(db, { emnifeedId: "EF-user1", gamerTag: "NormalPlayer", isAdmin: 0 });
+  await seedSession(db, { emnifeedId: "EF-user1", token: "user-session-token" });
+
+  // 1. Admin session /api/auth/me returns isAdmin: true
+  const adminMeRes = await worker.fetch(
+    new Request("https://emnifun.example/api/auth/me", {
+      headers: {
+        Origin: allowedOrigin,
+        Cookie: `__Host-emnifun_session=admin-session-token`
+      }
+    }),
+    env
+  );
+  assert.equal(adminMeRes.status, 200);
+  const adminMeData = await adminMeRes.json();
+  assert.equal(adminMeData.ok, true);
+  assert.equal(adminMeData.user.gamerTag, "OwnerAdmin");
+  assert.equal(adminMeData.user.isAdmin, true);
+
+  // 2. Normal user session /api/auth/me returns isAdmin: false
+  const userMeRes = await worker.fetch(
+    new Request("https://emnifun.example/api/auth/me", {
+      headers: {
+        Origin: allowedOrigin,
+        Cookie: `__Host-emnifun_session=user-session-token`
+      }
+    }),
+    env
+  );
+  assert.equal(userMeRes.status, 200);
+  const userMeData = await userMeRes.json();
+  assert.equal(userMeData.ok, true);
+  assert.equal(userMeData.user.gamerTag, "NormalPlayer");
+  assert.equal(userMeData.user.isAdmin, false);
+
+  // 3. Unauthenticated /api/auth/me returns user: null
+  const anonMeRes = await worker.fetch(
+    new Request("https://emnifun.example/api/auth/me", {
+      headers: { Origin: allowedOrigin }
+    }),
+    env
+  );
+  assert.equal(anonMeRes.status, 200);
+  const anonMeData = await anonMeRes.json();
+  assert.equal(anonMeData.ok, true);
+  assert.equal(anonMeData.user, null);
+});
+
+test("conditional admin navigation link exists in primary navigation and is hidden by default", async () => {
+  const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const appJs = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+
+  // Verify link in index.html inside primary navigation
+  assert.match(
+    indexHtml,
+    /<a class="nav-link" id="nav-admin" href="https:\/\/emnifun\.github\.io\/EmniFun\/admin\/" style="display: none; text-decoration: none;">Admin<\/a>/
+  );
+
+  // Verify syncAuthNavigation checks user.isAdmin boolean without string-matching
+  assert.match(appJs, /user && user\.isAdmin === true/);
+  assert.doesNotMatch(appJs, /user\.gamerTag ===/);
+  assert.doesNotMatch(appJs, /user\.username ===/);
+});
+
+test("admin panel game tabs: renders FiveWink, Game 2, and Game 3 tabs with Coming Soon states", async () => {
+  const adminJs = await readFile(new URL("../admin/admin.js", import.meta.url), "utf8");
+  const adminCss = await readFile(new URL("../admin/admin.css", import.meta.url), "utf8");
+
+  // Verify activeTab in adminState
+  assert.match(adminJs, /activeTab:\s*"fivewink"/);
+
+  // Verify tabs in render()
+  assert.match(adminJs, /data-tab="fivewink"/);
+  assert.match(adminJs, /data-tab="game2"/);
+  assert.match(adminJs, /data-tab="game3"/);
+
+  // Verify Coming Soon states for Game 2 and Game 3
+  assert.match(adminJs, /Game 2 Administration/);
+  assert.match(adminJs, /Game 3 Administration/);
+  assert.match(adminJs, /Coming Soon/);
+
+  // Verify CSS classes for tabs
+  assert.match(adminCss, /\.admin-tabs/);
+  assert.match(adminCss, /\.admin-tab/);
 });

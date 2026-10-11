@@ -17,6 +17,7 @@ let adminState = {
   status: "loading", // "loading" | "unauthenticated" | "forbidden" | "authorized"
   gamerTag: null,
   todayDate: null,
+  activeTab: "fivewink", // "fivewink" | "game2" | "game3"
   puzzles: [],
   filterStatus: "all",
   searchQuery: "",
@@ -432,8 +433,8 @@ function render() {
     <div class="admin-shell">
       <header class="admin-header">
         <div class="admin-title-group">
-          <h1>FiveWink Administration</h1>
-          <p>Manage daily puzzles, clues, scheduling, and publication</p>
+          <h1>EmniFun Administration</h1>
+          <p>Game management and administration portal</p>
         </div>
         <div class="admin-user-bar">
           <span class="admin-badge">Admin: @${escapeHtml(adminState.gamerTag || "")}</span>
@@ -443,28 +444,54 @@ function render() {
         </div>
       </header>
 
-      <section class="admin-toolbar">
-        <div class="admin-filters">
-          <button id="btn-create-puzzle" class="button" type="button">+ Create Puzzle</button>
-          <input
-            id="input-search"
-            class="admin-input"
-            type="search"
-            placeholder="Search date or answer…"
-            value="${escapeHtml(adminState.searchQuery)}"
-          />
-          <select id="select-status" class="admin-select">
-            <option value="all" ${adminState.filterStatus === "all" ? "selected" : ""}>All Statuses</option>
-            <option value="draft" ${adminState.filterStatus === "draft" ? "selected" : ""}>Draft</option>
-            <option value="published" ${adminState.filterStatus === "published" ? "selected" : ""}>Published</option>
-            <option value="unpublished" ${adminState.filterStatus === "unpublished" ? "selected" : ""}>Unpublished</option>
-            <option value="archived" ${adminState.filterStatus === "archived" ? "selected" : ""}>Archived</option>
-          </select>
-        </div>
-        <button id="btn-refresh" class="admin-btn-sm" type="button">↻ Refresh</button>
-      </section>
+      <nav class="admin-tabs" aria-label="Admin game selection">
+        <button class="admin-tab ${adminState.activeTab === "fivewink" ? "active" : ""}" data-tab="fivewink" type="button">FiveWink</button>
+        <button class="admin-tab ${adminState.activeTab === "game2" ? "active" : ""}" data-tab="game2" type="button">Game 2</button>
+        <button class="admin-tab ${adminState.activeTab === "game3" ? "active" : ""}" data-tab="game3" type="button">Game 3</button>
+      </nav>
 
-      <main class="admin-table-container"></main>
+      ${
+        adminState.activeTab === "fivewink"
+          ? `
+            <section class="admin-toolbar">
+              <div class="admin-filters">
+                <button id="btn-create-puzzle" class="button" type="button">+ Create Puzzle</button>
+                <input
+                  id="input-search"
+                  class="admin-input"
+                  type="search"
+                  placeholder="Search date or answer…"
+                  value="${escapeHtml(adminState.searchQuery)}"
+                />
+                <select id="select-status" class="admin-select">
+                  <option value="all" ${adminState.filterStatus === "all" ? "selected" : ""}>All Statuses</option>
+                  <option value="draft" ${adminState.filterStatus === "draft" ? "selected" : ""}>Draft</option>
+                  <option value="published" ${adminState.filterStatus === "published" ? "selected" : ""}>Published</option>
+                  <option value="unpublished" ${adminState.filterStatus === "unpublished" ? "selected" : ""}>Unpublished</option>
+                  <option value="archived" ${adminState.filterStatus === "archived" ? "selected" : ""}>Archived</option>
+                </select>
+              </div>
+              <button id="btn-refresh" class="admin-btn-sm" type="button">↻ Refresh</button>
+            </section>
+
+            <main class="admin-table-container"></main>
+          `
+          : adminState.activeTab === "game2"
+            ? `
+              <div class="admin-card admin-state-box">
+                <h2>Game 2 Administration</h2>
+                <p>Admin controls for Game 2 will become available when Game 2 development begins.</p>
+                <span class="admin-badge">Coming Soon</span>
+              </div>
+            `
+            : `
+              <div class="admin-card admin-state-box">
+                <h2>Game 3 Administration</h2>
+                <p>Admin controls for Game 3 will become available when Game 3 development begins.</p>
+                <span class="admin-badge">Coming Soon</span>
+              </div>
+            `
+      }
     </div>
     <div id="admin-modal-root">${renderModalContent()}</div>
   `;
@@ -625,22 +652,35 @@ function renderModalContent() {
 
 function attachEventHandlers() {
   document.getElementById("btn-admin-logout")?.addEventListener("click", handleLogout);
-  document.getElementById("btn-refresh")?.addEventListener("click", loadPuzzles);
 
-  document.getElementById("btn-create-puzzle")?.addEventListener("click", () => {
-    openModal({ type: "create" });
+  document.querySelectorAll(".admin-tab").forEach((tabBtn) => {
+    tabBtn.addEventListener("click", () => {
+      const tab = tabBtn.getAttribute("data-tab");
+      if (tab && adminState.activeTab !== tab) {
+        adminState.activeTab = tab;
+        render();
+      }
+    });
   });
 
-  const searchInput = document.getElementById("input-search");
-  searchInput?.addEventListener("input", (e) => {
-    adminState.searchQuery = e.target.value;
-    renderTable();
-  });
+  if (adminState.activeTab === "fivewink") {
+    document.getElementById("btn-refresh")?.addEventListener("click", loadPuzzles);
 
-  document.getElementById("select-status")?.addEventListener("change", (e) => {
-    adminState.filterStatus = e.target.value;
-    renderTable();
-  });
+    document.getElementById("btn-create-puzzle")?.addEventListener("click", () => {
+      openModal({ type: "create" });
+    });
+
+    const searchInput = document.getElementById("input-search");
+    searchInput?.addEventListener("input", (e) => {
+      adminState.searchQuery = e.target.value;
+      renderTable();
+    });
+
+    document.getElementById("select-status")?.addEventListener("change", (e) => {
+      adminState.filterStatus = e.target.value;
+      renderTable();
+    });
+  }
 }
 
 function attachModalHandlers() {

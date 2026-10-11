@@ -14,11 +14,7 @@ import {
 } from "./token.js";
 import { handleAuthRequest, cleanupAuthData } from "./auth.js";
 import { handleAdminRequest, autoPublishDailyPuzzle } from "./admin.js";
-
-const VALID_GUESSES_URL =
-  "https://raw.githubusercontent.com/emnifun/EmniFun/main/data/game1/vocabulary/valid-guesses.json";
-
-let validWordsPromise = null;
+import { loadValidWords } from "./vocab.js";
 
 function corsHeaders() {
   return {
@@ -50,41 +46,6 @@ function requireConfiguredEnvironment(env) {
   }
 }
 
-async function loadValidWords() {
-  if (!validWordsPromise) {
-    validWordsPromise = fetch(VALID_GUESSES_URL, {
-      cf: { cacheEverything: true, cacheTtl: 86400 }
-    }).then(async (response) => {
-      if (!response.ok) {
-        throw new Error("The FiveWink guess vocabulary could not be loaded.");
-      }
-
-      const data = await response.json();
-
-      if (!Array.isArray(data?.words)) {
-        throw new Error("The FiveWink guess vocabulary is invalid.");
-      }
-
-      const words = new Set(
-        data.words
-          .map((word) => normalizeGuess(word))
-          .filter((word) => isFiveLetterGuess(word))
-      );
-
-      if (words.size < 10000) {
-        throw new Error("The FiveWink guess vocabulary is unexpectedly small.");
-      }
-
-      return words;
-    });
-
-    validWordsPromise.catch(() => {
-      validWordsPromise = null;
-    });
-  }
-
-  return validWordsPromise;
-}
 
 function getTodayDateIndia() {
   const parts = new Intl.DateTimeFormat("en-CA", {

@@ -80,12 +80,20 @@ function toggleMobileNavigation() {
 }
 
 function syncAuthNavigation() {
-  const loginLink = navLinks.find((link) => link.dataset.navAuth === "true");
-  if (!loginLink) return;
+  const user = getCurrentUser();
+  const signedIn = Boolean(user);
 
-  const signedIn = Boolean(getCurrentUser());
-  loginLink.dataset.view = signedIn ? "account" : "login";
-  loginLink.textContent = signedIn ? "Account" : "Login";
+  const loginLink = navLinks.find((link) => link.dataset.navAuth === "true");
+  if (loginLink) {
+    loginLink.dataset.view = signedIn ? "account" : "login";
+    loginLink.textContent = signedIn ? "Account" : "Login";
+  }
+
+  const adminLink = document.querySelector("#nav-admin");
+  if (adminLink) {
+    const isAdmin = Boolean(user && user.isAdmin === true);
+    adminLink.style.display = isAdmin ? "" : "none";
+  }
 }
 
 function navigateTo(route) {
@@ -201,7 +209,7 @@ function setupNavigation() {
   });
 
   primaryNavigation.addEventListener("click", (event) => {
-    if (event.target.closest("[data-view]")) {
+    if (event.target.closest("[data-view]") || event.target.closest("#nav-admin")) {
       closeMobileNavigation();
     }
   });

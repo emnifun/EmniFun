@@ -1,4 +1,5 @@
 import { authenticateAdmin, authConfig } from "./auth.js";
+import { loadValidWords } from "./vocab.js";
 
 function adminJsonResponse(data, status = 200, config, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
@@ -148,6 +149,11 @@ export async function autoPublishDailyPuzzle(env, options = {}) {
     return { ok: false, published: false, reason: "invalid_answer", puzzleId: draft.puzzle_id };
   }
 
+  const validWords = await loadValidWords(options);
+  if (!validWords.has(draft.answer)) {
+    return { ok: false, published: false, reason: "invalid_vocabulary_word", puzzleId: draft.puzzle_id };
+  }
+
   let clues = [];
   try {
     clues = JSON.parse(draft.clues_json);
@@ -284,6 +290,11 @@ export async function handleAdminRequest(request, env) {
         return adminJsonResponse({ ok: false, message: "Answer must be exactly five letters (A-Z)." }, 400, config);
       }
 
+      const validWords = await loadValidWords();
+      if (!validWords.has(answer)) {
+        return adminJsonResponse({ ok: false, message: "Answer must be a valid 5-letter word." }, 400, config);
+      }
+
       if (!clueResult.ok) {
         return adminJsonResponse({ ok: false, message: clueResult.message }, 400, config);
       }
@@ -402,6 +413,11 @@ export async function handleAdminRequest(request, env) {
           return adminJsonResponse({ ok: false, message: "Answer must be exactly five letters (A-Z)." }, 400, config);
         }
 
+        const validWords = await loadValidWords();
+        if (!validWords.has(answer)) {
+          return adminJsonResponse({ ok: false, message: "Answer must be a valid 5-letter word." }, 400, config);
+        }
+
         if (!clueResult.ok) {
           return adminJsonResponse({ ok: false, message: clueResult.message }, 400, config);
         }
@@ -474,6 +490,11 @@ export async function handleAdminRequest(request, env) {
         }
         if (!normalizeAnswer(puzzle.answer)) {
           return adminJsonResponse({ ok: false, message: "Puzzle answer must be five letters." }, 400, config);
+        }
+
+        const validWords = await loadValidWords();
+        if (!validWords.has(puzzle.answer)) {
+          return adminJsonResponse({ ok: false, message: "Puzzle answer must be a valid 5-letter word." }, 400, config);
         }
         const clueCheck = parseAndValidateClues(puzzle.clues);
         if (!clueCheck.ok) {
