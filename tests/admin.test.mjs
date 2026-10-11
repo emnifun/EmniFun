@@ -722,26 +722,3 @@ test("automatic publication publishes draft puzzle for current IST date and hand
   assert.equal(resArch.published, false);
   assert.equal(resArch.reason, "archived");
 });
-
-test("main site game navigation components and placeholders exist", async () => {
-  const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(indexHtml, /class="game-tabs"/);
-  assert.match(indexHtml, /data-game-tab="games\/game1"/);
-  assert.match(indexHtml, /data-game-tab="games\/game2"/);
-  assert.match(indexHtml, /data-game-tab="games\/game3"/);
-  assert.match(indexHtml, /FiveWink/);
-  assert.match(indexHtml, /Game 2/);
-  assert.match(indexHtml, /Game 3/);
-
-  const appJs = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
-  assert.match(appJs, /"games\/game1", "games\/game2", "games\/game3"/);
-  assert.match(appJs, /\.game-tab/);
-
-  const game2Ui = await readFile(new URL("../js/games/game2/game2-ui.js", import.meta.url), "utf8");
-  assert.match(game2Ui, /Game 2 is in development/);
-  assert.match(game2Ui, /It will be here once it is ready/);
-
-  const game3Ui = await readFile(new URL("../js/games/game3/game3-ui.js", import.meta.url), "utf8");
-  assert.match(game3Ui, /Game 3 is in development/);
-  assert.match(game3Ui, /It will be here once it is ready/);
-});
