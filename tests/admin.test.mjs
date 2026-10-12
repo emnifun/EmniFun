@@ -1155,3 +1155,41 @@ test("admin panel game tabs: renders FiveWink, Game 2, and Game 3 tabs with Comi
   assert.match(adminCss, /\.admin-tabs/);
   assert.match(adminCss, /\.admin-tab/);
 });
+
+test("admin panel tab-specific URLs and routing helpers", async () => {
+  const adminJs = await readFile(new URL("../admin/admin.js", import.meta.url), "utf8");
+
+  // Verify routing functions exist
+  assert.match(adminJs, /function getAdminBasePath\(\)/);
+  assert.match(adminJs, /function getPublicSiteRoot\(\)/);
+  assert.match(adminJs, /function getTabUrl\(tab\)/);
+  assert.match(adminJs, /function getTabFromPathname\(\)/);
+  assert.match(adminJs, /function switchTab\(tab/);
+  assert.match(adminJs, /function initAdminRouting\(\)/);
+
+  // Verify URL paths for each tab
+  assert.match(adminJs, /basePath \+ "FiveWink\/"/);
+  assert.match(adminJs, /basePath \+ "Game2\/"/);
+  assert.match(adminJs, /basePath \+ "Game3\/"/);
+
+  // Verify history pushState and popstate
+  assert.match(adminJs, /window\.history\?\.pushState/);
+  assert.match(adminJs, /window\.addEventListener\("popstate"/);
+
+  // Verify refresh button targets FiveWink URL
+  assert.match(adminJs, /getTabUrl\("fivewink"\)/);
+  assert.match(adminJs, /window\.location\.reload\(\)/);
+
+  // Verify static HTML entry points exist for GitHub Pages direct navigation
+  const fiveWinkIndex = await readFile(new URL("../admin/FiveWink/index.html", import.meta.url), "utf8");
+  const game2Index = await readFile(new URL("../admin/Game2/index.html", import.meta.url), "utf8");
+  const game3Index = await readFile(new URL("../admin/Game3/index.html", import.meta.url), "utf8");
+
+  assert.match(fiveWinkIndex, /<script type="module" src="\.\.\/admin\.js"><\/script>/);
+  assert.match(game2Index, /<script type="module" src="\.\.\/admin\.js"><\/script>/);
+  assert.match(game3Index, /<script type="module" src="\.\.\/admin\.js"><\/script>/);
+
+  assert.match(fiveWinkIndex, /<link rel="stylesheet" href="\.\.\/admin\.css">/);
+  assert.match(game2Index, /<link rel="stylesheet" href="\.\.\/admin\.css">/);
+  assert.match(game3Index, /<link rel="stylesheet" href="\.\.\/admin\.css">/);
+});

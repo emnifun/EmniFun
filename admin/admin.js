@@ -393,14 +393,15 @@ function render() {
   }
 
   if (adminState.status === "unauthenticated") {
+    const publicRoot = getPublicSiteRoot();
     app.innerHTML = `
       <div class="admin-shell">
         <div class="admin-card admin-state-box">
           <h2>Authentication Required</h2>
           <p>You must be signed in to your permanent EmniFun account to access the administration panel.</p>
-          <a href="../#login" class="button">Sign in to EmniFun</a>
+          <a href="${escapeHtml(publicRoot)}#login" class="button">Sign in to EmniFun</a>
           <p style="margin-top: 18px; font-size: 0.88rem;">
-            <a href="../" style="color: #4f46e5; text-decoration: underline;">← Return to public site</a>
+            <a href="${escapeHtml(publicRoot)}" style="color: #4f46e5; text-decoration: underline;">← Return to public site</a>
           </p>
         </div>
       </div>
@@ -409,6 +410,7 @@ function render() {
   }
 
   if (adminState.status === "forbidden") {
+    const publicRoot = getPublicSiteRoot();
     app.innerHTML = `
       <div class="admin-shell">
         <div class="admin-card admin-state-box">
@@ -419,7 +421,7 @@ function render() {
           </p>
           <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
             <button id="btn-admin-logout" class="button secondary" type="button">Sign Out</button>
-            <a href="../" class="button">Return to Game</a>
+            <a href="${escapeHtml(publicRoot)}" class="button">Return to Game</a>
           </div>
         </div>
       </div>
@@ -429,6 +431,7 @@ function render() {
   }
 
   // Authorized Dashboard
+  const publicRoot = getPublicSiteRoot();
   app.innerHTML = `
     <div class="admin-shell">
       <header class="admin-header">
@@ -439,7 +442,7 @@ function render() {
         <div class="admin-user-bar">
           <span class="admin-badge">Admin: @${escapeHtml(adminState.gamerTag || "")}</span>
           ${adminState.todayDate ? `<span class="admin-date-badge">IST Date: ${escapeHtml(adminState.todayDate)}</span>` : ""}
-          <a href="../#games/game1" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
+          <a href="${escapeHtml(publicRoot)}#games/game1" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
           <button id="btn-admin-logout" class="admin-btn-sm" type="button">Sign Out</button>
         </div>
       </header>
@@ -656,14 +659,22 @@ function attachEventHandlers() {
     tabBtn.addEventListener("click", () => {
       const tab = tabBtn.getAttribute("data-tab");
       if (tab && adminState.activeTab !== tab) {
-        adminState.activeTab = tab;
-        render();
+        switchTab(tab);
       }
     });
   });
 
   if (adminState.activeTab === "fivewink") {
-    document.getElementById("btn-refresh")?.addEventListener("click", loadPuzzles);
+    document.getElementById("btn-refresh")?.addEventListener("click", () => {
+      const fiveWinkUrl = getTabUrl("fivewink");
+      if (typeof window !== "undefined" && window.location) {
+        if (window.location.href === fiveWinkUrl || window.location.pathname.endsWith("/FiveWink/")) {
+          window.location.reload();
+        } else {
+          window.location.href = fiveWinkUrl;
+        }
+      }
+    });
 
     document.getElementById("btn-create-puzzle")?.addEventListener("click", () => {
       openModal({ type: "create" });
@@ -756,7 +767,77 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
+// Admin Routing & Navigation
+function getAdminBasePath() {
+  if (typeof window === "undefined" || !window.location) return "/admin/";
+  const match = window.location.pathname.match(/^(.*\/admin)(?:\/.*)?$/i);
+  if (match) {
+    return match[1] + "/";
+  }
+  return "/admin/";
+}
+
+function getPublicSiteRoot() {
+  const adminBase = getAdminBasePath();
+  return adminBase.replace(/\/admin\/$/, "/");
+}
+
+function getTabUrl(tab) {
+  const basePath = getAdminBasePath();
+  switch (tab) {
+    case "game2":
+      return basePath + "Game2/";
+    case "game3":
+      return basePath + "Game3/";
+    case "fivewink":
+    default:
+      return basePath + "FiveWink/";
+  }
+}
+
+function getTabFromPathname() {
+  if (typeof window === "undefined" || !window.location) return "fivewink";
+  const path = window.location.pathname.toLowerCase();
+  if (path.includes("/game2")) {
+    return "game2";
+  }
+  if (path.includes("/game3")) {
+    return "game3";
+  }
+  return "fivewink";
+}
+
+function switchTab(tab, updateHistory = true) {
+  if (adminState.activeTab === tab) return;
+  adminState.activeTab = tab;
+  if (updateHistory && typeof window !== "undefined" && window.history?.pushState) {
+    const tabUrl = getTabUrl(tab);
+    window.history.pushState({ tab }, "", tabUrl);
+  }
+  render();
+}
+
+function initAdminRouting() {
+  if (typeof window === "undefined" || !window.location) return;
+  const initialTab = getTabFromPathname();
+  adminState.activeTab = initialTab;
+
+  if (window.history?.replaceState) {
+    const currentTabUrl = getTabUrl(initialTab);
+    window.history.replaceState({ tab: initialTab }, "", currentTabUrl);
+  }
+
+  window.addEventListener("popstate", (event) => {
+    const targetTab = event.state?.tab || getTabFromPathname();
+    if (targetTab && adminState.activeTab !== targetTab) {
+      adminState.activeTab = targetTab;
+      render();
+    }
+  });
+}
+
 // Start admin application
 window.addEventListener("DOMContentLoaded", () => {
+  initAdminRouting();
   checkAdminStatus();
 });
