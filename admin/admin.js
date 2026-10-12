@@ -451,7 +451,7 @@ function render() {
         <div class="admin-user-bar">
           <span class="admin-badge">Admin: @${escapeHtml(adminState.gamerTag || "")}</span>
           ${adminState.todayDate ? `<span class="admin-date-badge">IST Date: ${escapeHtml(adminState.todayDate)}</span>` : ""}
-          <a href="${escapeHtml(publicRoot)}#games/game1" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
+          <a href="${escapeHtml(publicRoot)}Games/FiveWink/" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
           <button id="btn-admin-logout" class="admin-btn-sm" type="button">Sign Out</button>
         </div>
       </header>
@@ -467,7 +467,7 @@ function render() {
         <div class="admin-user-bar">
           <span class="admin-badge">Admin: @${escapeHtml(adminState.gamerTag || "")}</span>
           ${adminState.todayDate ? `<span class="admin-date-badge">IST Date: ${escapeHtml(adminState.todayDate)}</span>` : ""}
-          <a href="${escapeHtml(publicRoot)}#games/game1" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
+          <a href="${escapeHtml(publicRoot)}Games/FiveWink/" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
           <button id="btn-admin-logout" class="admin-btn-sm" type="button">Sign Out</button>
         </div>
       </header>
@@ -483,7 +483,7 @@ function render() {
         <div class="admin-user-bar">
           <span class="admin-badge">Admin: @${escapeHtml(adminState.gamerTag || "")}</span>
           ${adminState.todayDate ? `<span class="admin-date-badge">IST Date: ${escapeHtml(adminState.todayDate)}</span>` : ""}
-          <a href="${escapeHtml(publicRoot)}#games/game1" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
+          <a href="${escapeHtml(publicRoot)}Games/FiveWink/" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
           <button id="btn-admin-logout" class="admin-btn-sm" type="button">Sign Out</button>
         </div>
       </header>
@@ -499,7 +499,7 @@ function render() {
         <div class="admin-user-bar">
           <span class="admin-badge">Admin: @${escapeHtml(adminState.gamerTag || "")}</span>
           ${adminState.todayDate ? `<span class="admin-date-badge">IST Date: ${escapeHtml(adminState.todayDate)}</span>` : ""}
-          <a href="${escapeHtml(publicRoot)}#games/game1" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
+          <a href="${escapeHtml(publicRoot)}Games/FiveWink/" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
           <button id="btn-admin-logout" class="admin-btn-sm" type="button">Sign Out</button>
         </div>
       </header>

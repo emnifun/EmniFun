@@ -11,18 +11,18 @@ import {
   renderLoginPage
 } from "./auth/auth-ui.js";
 
-const views = [...document.querySelectorAll(".view")];
-const navLinks = [...document.querySelectorAll(".nav-link")];
-const viewLinks = [...document.querySelectorAll("[data-view]")];
-const gamesView = document.querySelector("#games");
-const gameArea = document.querySelector("#game-area");
-const accountContent = document.querySelector("#account-content");
-const loginContent = document.querySelector("#login-content");
-const mobileMenuToggle = document.querySelector("#mobile-menu-toggle");
-const primaryNavigation = document.querySelector("#primary-navigation");
+const views = typeof document !== "undefined" ? [...document.querySelectorAll(".view")] : [];
+const navLinks = typeof document !== "undefined" ? [...document.querySelectorAll(".nav-link")] : [];
+const viewLinks = typeof document !== "undefined" ? [...document.querySelectorAll("[data-view]")] : [];
+const gamesView = typeof document !== "undefined" ? document.querySelector("#games") : null;
+const gameArea = typeof document !== "undefined" ? document.querySelector("#game-area") : null;
+const accountContent = typeof document !== "undefined" ? document.querySelector("#account-content") : null;
+const loginContent = typeof document !== "undefined" ? document.querySelector("#login-content") : null;
+const mobileMenuToggle = typeof document !== "undefined" ? document.querySelector("#mobile-menu-toggle") : null;
+const primaryNavigation = typeof document !== "undefined" ? document.querySelector("#primary-navigation") : null;
 
-const DEFAULT_ROUTE = "home";
-const PRIMARY_ROUTES = new Set([
+export const DEFAULT_ROUTE = "home";
+export const PRIMARY_ROUTES = new Set([
   "home",
   "games",
   "statistics",
@@ -30,21 +30,118 @@ const PRIMARY_ROUTES = new Set([
   "login",
   "account"
 ]);
-const GAME_ROUTES = new Set(["games/game1"]);
-const ACCOUNT_ROUTES = new Set(["account", "account/vault"]);
-const ROUTES = new Set([
+export const GAME_ROUTES = new Set([
+  "games/fivewink",
+  "games/game1",
+  "games/game2",
+  "games/game3"
+]);
+export const ACCOUNT_ROUTES = new Set(["account", "account/vault"]);
+export const ROUTES = new Set([
   ...PRIMARY_ROUTES,
   ...GAME_ROUTES,
   ...ACCOUNT_ROUTES
 ]);
 
-function getRouteFromHash() {
-  const rawHash = window.location.hash.replace(/^#/, "").trim();
-  return rawHash || DEFAULT_ROUTE;
+export function getPublicSiteRoot() {
+  if (typeof window === "undefined" || !window.location) return "/";
+  const gamesMatch = window.location.pathname.match(/^(.*\/)games(?:\/.*)?$/i);
+  if (gamesMatch) {
+    return gamesMatch[1];
+  }
+  const adminMatch = window.location.pathname.match(/^(.*\/)admin(?:\/.*)?$/i);
+  if (adminMatch) {
+    return adminMatch[1];
+  }
+  const pathname = window.location.pathname;
+  const lastSlashIndex = pathname.lastIndexOf("/");
+  if (lastSlashIndex >= 0) {
+    return pathname.substring(0, lastSlashIndex + 1);
+  }
+  return "/";
 }
 
-function normalizeRoute(route) {
-  return ROUTES.has(route) ? route : DEFAULT_ROUTE;
+export function getGamesUrl() {
+  return getPublicSiteRoot() + "Games/";
+}
+
+export function getGameUrl(name) {
+  const base = getGamesUrl();
+  if (!name) return base;
+  const lower = name.toLowerCase();
+  if (lower === "fivewink" || lower === "game1") {
+    return base + "FiveWink/";
+  }
+  if (lower === "game2") {
+    return base + "Game2/";
+  }
+  if (lower === "game3") {
+    return base + "Game3/";
+  }
+  return base + name + "/";
+}
+
+export function normalizeRoute(route) {
+  if (!route) return DEFAULT_ROUTE;
+  const lower = route.toLowerCase();
+  if (lower === "games/game1") return "games/fivewink";
+  if (ROUTES.has(lower)) return lower;
+  if (lower.startsWith("games/")) return lower;
+  return DEFAULT_ROUTE;
+}
+
+export function getRouteUrl(route) {
+  const current = normalizeRoute(route);
+  if (current === "home") {
+    return getPublicSiteRoot();
+  }
+  if (current === "games") {
+    return getGamesUrl();
+  }
+  if (current.startsWith("games/")) {
+    const gameName = current.slice("games/".length);
+    return getGameUrl(gameName);
+  }
+  return getPublicSiteRoot() + "#" + current;
+}
+
+export function getCurrentRoute() {
+  if (typeof window === "undefined" || !window.location) return DEFAULT_ROUTE;
+
+  const pathname = window.location.pathname.replace(/\/index\.html$/i, "/");
+  const gamesMatch = pathname.match(/^(?:.*\/)?games(?:\/(.*))?$/i);
+
+  if (gamesMatch) {
+    const sub = (gamesMatch[1] || "").replace(/\/+$/, "").trim().toLowerCase();
+    if (!sub) {
+      return "games";
+    }
+    if (sub === "fivewink" || sub === "game1") {
+      return "games/fivewink";
+    }
+    if (sub === "game2") {
+      return "games/game2";
+    }
+    if (sub === "game3") {
+      return "games/game3";
+    }
+    return "games/" + sub;
+  }
+
+  const rawHash = window.location.hash.replace(/^#/, "").trim().toLowerCase();
+  if (rawHash) {
+    if (rawHash === "games") return "games";
+    if (rawHash === "games/game1" || rawHash === "games/fivewink") return "games/fivewink";
+    if (rawHash === "games/game2") return "games/game2";
+    if (rawHash === "games/game3") return "games/game3";
+    if (ROUTES.has(rawHash)) return rawHash;
+  }
+
+  return DEFAULT_ROUTE;
+}
+
+export function getRouteFromHash() {
+  return getCurrentRoute();
 }
 
 function resolveAuthRoute(route) {
@@ -57,6 +154,7 @@ function resolveAuthRoute(route) {
 }
 
 function closeMobileNavigation() {
+  if (!primaryNavigation || !mobileMenuToggle) return;
   primaryNavigation.classList.remove("mobile-open");
   mobileMenuToggle.classList.remove("is-open");
   mobileMenuToggle.setAttribute("aria-expanded", "false");
@@ -64,6 +162,7 @@ function closeMobileNavigation() {
 }
 
 function openMobileNavigation() {
+  if (!primaryNavigation || !mobileMenuToggle) return;
   primaryNavigation.classList.add("mobile-open");
   mobileMenuToggle.classList.add("is-open");
   mobileMenuToggle.setAttribute("aria-expanded", "true");
@@ -71,6 +170,7 @@ function openMobileNavigation() {
 }
 
 function toggleMobileNavigation() {
+  if (!primaryNavigation) return;
   const isOpen = primaryNavigation.classList.contains("mobile-open");
   if (isOpen) {
     closeMobileNavigation();
@@ -96,36 +196,50 @@ function syncAuthNavigation() {
   }
 }
 
-function navigateTo(route) {
+export function navigateTo(route) {
   closeMobileNavigation();
   const nextRoute = resolveAuthRoute(route);
+  const targetUrl = getRouteUrl(nextRoute);
+  const currentRoute = getCurrentRoute();
 
-  if (getRouteFromHash() === nextRoute) {
+  if (currentRoute === nextRoute) {
     renderRoute(nextRoute);
     return;
   }
 
-  window.location.hash = nextRoute;
+  if (typeof window !== "undefined" && window.history?.pushState) {
+    window.history.pushState({ route: nextRoute }, "", targetUrl);
+  } else if (typeof window !== "undefined") {
+    window.location.href = targetUrl;
+    return;
+  }
+
+  renderRoute(nextRoute);
 }
 
-function renderRoute(route) {
+export function renderRoute(route) {
   const currentRoute = resolveAuthRoute(route);
-  const isGame1 = currentRoute === "games/game1";
+  const isFiveWink = currentRoute === "games/fivewink" || currentRoute === "games/game1";
+  const isGame2 = currentRoute === "games/game2";
+  const isGame3 = currentRoute === "games/game3";
+  const isAnyGame = isFiveWink || isGame2 || isGame3 || currentRoute.startsWith("games/");
   const isAccount = ACCOUNT_ROUTES.has(currentRoute);
-  const viewId = isGame1 ? "games" : isAccount ? "account" : currentRoute;
+  const viewId = (currentRoute === "games" || isAnyGame) ? "games" : isAccount ? "account" : currentRoute;
 
   document.title =
-    isGame1
+    isFiveWink
       ? "FiveWink — EmniFun"
-      : currentRoute === "account/vault"
-        ? "Recovery Vault — EmniFun"
-        : currentRoute === "account"
-          ? "Account — EmniFun"
-          : "EmniFun";
-
-  if (getRouteFromHash() !== currentRoute) {
-    window.history.replaceState(null, "", `#${currentRoute}`);
-  }
+      : isGame2
+        ? "Game 2 — EmniFun"
+        : isGame3
+          ? "Game 3 — EmniFun"
+          : currentRoute === "games"
+            ? "Games — EmniFun"
+            : currentRoute === "account/vault"
+              ? "Recovery Vault — EmniFun"
+              : currentRoute === "account"
+                ? "Account — EmniFun"
+                : "EmniFun";
 
   views.forEach((view) => {
     view.classList.toggle("active", view.id === viewId);
@@ -143,14 +257,20 @@ function renderRoute(route) {
   closeMobileNavigation();
 
   if (viewId === "games") {
-    if (isGame1) {
-      gamesView.classList.add("game-playing");
-      void renderGame1(gameArea);
+    if (isFiveWink) {
+      gamesView?.classList.add("game-playing");
+      if (gameArea) void renderGame1(gameArea);
+    } else if (isGame2) {
+      gamesView?.classList.add("game-playing");
+      if (gameArea) renderGame2(gameArea);
+    } else if (isGame3) {
+      gamesView?.classList.add("game-playing");
+      if (gameArea) renderGame3(gameArea);
     } else {
-      gamesView.classList.remove("game-playing");
+      gamesView?.classList.remove("game-playing");
       renderGames();
     }
-  } else if (gamesView.classList.contains("game-playing")) {
+  } else if (gamesView?.classList.contains("game-playing")) {
     gamesView.classList.remove("game-playing");
     renderGames();
   }
@@ -159,16 +279,17 @@ function renderRoute(route) {
     renderStatistics();
   }
 
-  if (viewId === "login") {
+  if (viewId === "login" && loginContent) {
     renderLoginPage(loginContent);
   }
 
-  if (viewId === "account") {
+  if (viewId === "account" && accountContent) {
     renderAccountPage(accountContent, currentRoute);
   }
 }
 
-function renderGames() {
+export function renderGames() {
+  if (!gameArea) return;
   gameArea.innerHTML =
     '<div class="card-grid">' +
       '<article class="card"><h3>FiveWink</h3><p>Wink your way to the word.</p><button class="button" data-game="game1">Play</button></article>' +
@@ -176,22 +297,24 @@ function renderGames() {
       '<article class="card"><h3>Game 3</h3><p>A third independent game slot for future development.</p><button class="button secondary" data-game="game3">Coming Soon</button></article>' +
     '</div>';
 
-  gameArea.querySelector('[data-game="game1"]').addEventListener("click", () => {
-    navigateTo("games/game1");
+  gameArea.querySelector('[data-game="game1"]')?.addEventListener("click", () => {
+    navigateTo("games/fivewink");
   });
 
-  gameArea.querySelector('[data-game="game2"]').addEventListener("click", () => {
-    renderGame2(gameArea);
+  gameArea.querySelector('[data-game="game2"]')?.addEventListener("click", () => {
+    navigateTo("games/game2");
   });
 
-  gameArea.querySelector('[data-game="game3"]').addEventListener("click", () => {
-    renderGame3(gameArea);
+  gameArea.querySelector('[data-game="game3"]')?.addEventListener("click", () => {
+    navigateTo("games/game3");
   });
 }
 
 function renderStatistics() {
   const stats = getGameStatistics("game1");
-  document.querySelector("#statistics-content").innerHTML =
+  const statsContent = document.querySelector("#statistics-content");
+  if (!statsContent) return;
+  statsContent.innerHTML =
     '<div class="stats-grid">' +
       '<div class="stat"><span>Current streak</span><strong>' + stats.currentStreak + '</strong></div>' +
       '<div class="stat"><span>Maximum streak</span><strong>' + stats.longestStreak + '</strong></div>' +
@@ -203,12 +326,12 @@ function renderStatistics() {
 }
 
 function setupNavigation() {
-  mobileMenuToggle.addEventListener("click", (event) => {
+  mobileMenuToggle?.addEventListener("click", (event) => {
     event.stopPropagation();
     toggleMobileNavigation();
   });
 
-  primaryNavigation.addEventListener("click", (event) => {
+  primaryNavigation?.addEventListener("click", (event) => {
     if (event.target.closest("[data-view]") || event.target.closest("#nav-admin")) {
       closeMobileNavigation();
     }
@@ -216,18 +339,18 @@ function setupNavigation() {
 
   document.addEventListener("click", (event) => {
     if (
-      primaryNavigation.classList.contains("mobile-open") &&
+      primaryNavigation?.classList.contains("mobile-open") &&
       !primaryNavigation.contains(event.target) &&
-      !mobileMenuToggle.contains(event.target)
+      !mobileMenuToggle?.contains(event.target)
     ) {
       closeMobileNavigation();
     }
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && primaryNavigation.classList.contains("mobile-open")) {
+    if (event.key === "Escape" && primaryNavigation?.classList.contains("mobile-open")) {
       closeMobileNavigation();
-      mobileMenuToggle.focus();
+      mobileMenuToggle?.focus();
     }
   });
 
@@ -242,41 +365,43 @@ function setupNavigation() {
     button.addEventListener("click", () => navigateTo("games"));
   });
 
-  gameArea.addEventListener("game1-back", () => {
+  gameArea?.addEventListener("game1-back", () => {
     navigateTo("games");
   });
 
+  window.addEventListener("popstate", (event) => {
+    const route = event.state?.route || getCurrentRoute();
+    renderRoute(route);
+  });
+
   window.addEventListener("hashchange", () => {
-    const route = getRouteFromHash();
-
-    if (!ROUTES.has(route)) {
-      navigateTo(DEFAULT_ROUTE);
-      return;
-    }
-
+    const route = getCurrentRoute();
     renderRoute(route);
   });
 
   window.addEventListener("emnifun-auth-changed", () => {
     syncAuthNavigation();
-    renderRoute(getRouteFromHash());
+    renderRoute(getCurrentRoute());
   });
 }
 
-async function initialize() {
+export async function initialize() {
   setupNavigation();
   await hydrateAuth();
   syncAuthNavigation();
 
-  const route = getRouteFromHash();
+  const route = getCurrentRoute();
 
-  if (!ROUTES.has(route)) {
-    window.history.replaceState(null, "", "#home");
-    renderRoute(DEFAULT_ROUTE);
-    return;
+  if (typeof window !== "undefined" && window.location.hash.toLowerCase().startsWith("#games")) {
+    const cleanUrl = getRouteUrl(route);
+    if (window.history?.replaceState) {
+      window.history.replaceState({ route }, "", cleanUrl);
+    }
   }
 
   renderRoute(route);
 }
 
-void initialize();
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  void initialize();
+}
