@@ -17,7 +17,7 @@ let adminState = {
   status: "loading", // "loading" | "unauthenticated" | "forbidden" | "authorized"
   gamerTag: null,
   todayDate: null,
-  activeTab: "fivewink", // "fivewink" | "game2" | "game3"
+  currentView: "portal", // "portal" | "fivewink" | "game2" | "game3"
   puzzles: [],
   filterStatus: "all",
   searchQuery: "",
@@ -83,7 +83,9 @@ async function checkAdminStatus() {
     adminState.status = "authorized";
     adminState.gamerTag = data.gamerTag;
     adminState.todayDate = data.todayDate;
-    await loadPuzzles();
+    if (adminState.currentView === "fivewink") {
+      await loadPuzzles();
+    }
   } catch (error) {
     adminState.status = "unauthenticated";
   } finally {
@@ -432,11 +434,50 @@ function render() {
 
   // Authorized Dashboard
   const publicRoot = getPublicSiteRoot();
-  app.innerHTML = `
-    <div class="admin-shell">
+  const portalUrl = getPanelUrl("portal");
+  const isPortal = adminState.currentView === "portal";
+  const isFiveWink = adminState.currentView === "fivewink";
+  const isGame2 = adminState.currentView === "game2";
+  const isGame3 = adminState.currentView === "game3";
+
+  let headerHtml = "";
+  if (isPortal) {
+    headerHtml = `
       <header class="admin-header">
         <div class="admin-title-group">
-          <h1>EmniFun Administration</h1>
+          <h1>Admin Panels</h1>
+          <p>Select an administration panel to continue.</p>
+        </div>
+        <div class="admin-user-bar">
+          <span class="admin-badge">Admin: @${escapeHtml(adminState.gamerTag || "")}</span>
+          ${adminState.todayDate ? `<span class="admin-date-badge">IST Date: ${escapeHtml(adminState.todayDate)}</span>` : ""}
+          <a href="${escapeHtml(publicRoot)}#games/game1" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
+          <button id="btn-admin-logout" class="admin-btn-sm" type="button">Sign Out</button>
+        </div>
+      </header>
+    `;
+  } else if (isFiveWink) {
+    headerHtml = `
+      <header class="admin-header">
+        <div class="admin-title-group">
+          <a href="${escapeHtml(portalUrl)}" class="admin-back-link">← Admin Portal</a>
+          <h1>FiveWink Administration</h1>
+          <p>Daily puzzle content management and publication</p>
+        </div>
+        <div class="admin-user-bar">
+          <span class="admin-badge">Admin: @${escapeHtml(adminState.gamerTag || "")}</span>
+          ${adminState.todayDate ? `<span class="admin-date-badge">IST Date: ${escapeHtml(adminState.todayDate)}</span>` : ""}
+          <a href="${escapeHtml(publicRoot)}#games/game1" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
+          <button id="btn-admin-logout" class="admin-btn-sm" type="button">Sign Out</button>
+        </div>
+      </header>
+    `;
+  } else if (isGame2) {
+    headerHtml = `
+      <header class="admin-header">
+        <div class="admin-title-group">
+          <a href="${escapeHtml(portalUrl)}" class="admin-back-link">← Admin Portal</a>
+          <h1>Game 2 Administration</h1>
           <p>Game management and administration portal</p>
         </div>
         <div class="admin-user-bar">
@@ -446,54 +487,94 @@ function render() {
           <button id="btn-admin-logout" class="admin-btn-sm" type="button">Sign Out</button>
         </div>
       </header>
+    `;
+  } else {
+    headerHtml = `
+      <header class="admin-header">
+        <div class="admin-title-group">
+          <a href="${escapeHtml(portalUrl)}" class="admin-back-link">← Admin Portal</a>
+          <h1>Game 3 Administration</h1>
+          <p>Game management and administration portal</p>
+        </div>
+        <div class="admin-user-bar">
+          <span class="admin-badge">Admin: @${escapeHtml(adminState.gamerTag || "")}</span>
+          ${adminState.todayDate ? `<span class="admin-date-badge">IST Date: ${escapeHtml(adminState.todayDate)}</span>` : ""}
+          <a href="${escapeHtml(publicRoot)}#games/game1" class="admin-btn-sm" target="_blank" rel="noopener">Play Game</a>
+          <button id="btn-admin-logout" class="admin-btn-sm" type="button">Sign Out</button>
+        </div>
+      </header>
+    `;
+  }
 
-      <nav class="admin-tabs" aria-label="Admin game selection">
-        <button class="admin-tab ${adminState.activeTab === "fivewink" ? "active" : ""}" data-tab="fivewink" type="button">FiveWink</button>
-        <button class="admin-tab ${adminState.activeTab === "game2" ? "active" : ""}" data-tab="game2" type="button">Game 2</button>
-        <button class="admin-tab ${adminState.activeTab === "game3" ? "active" : ""}" data-tab="game3" type="button">Game 3</button>
-      </nav>
+  let contentHtml = "";
+  if (isPortal) {
+    contentHtml = `
+      <section class="admin-portal-section">
+        <div class="card-grid">
+          <article class="card">
+            <h3>FiveWink</h3>
+            <p>Manage FiveWink daily puzzles, drafts, publishing, and clues.</p>
+            <a href="${escapeHtml(getPanelUrl("fivewink"))}" class="button">Open Panel</a>
+          </article>
+          <article class="card">
+            <h3>Game 2</h3>
+            <p>Admin controls for Game 2 will become available when Game 2 development begins.</p>
+            <a href="${escapeHtml(getPanelUrl("game2"))}" class="button secondary">Coming Soon</a>
+          </article>
+          <article class="card">
+            <h3>Game 3</h3>
+            <p>Admin controls for Game 3 will become available when Game 3 development begins.</p>
+            <a href="${escapeHtml(getPanelUrl("game3"))}" class="button secondary">Coming Soon</a>
+          </article>
+        </div>
+      </section>
+    `;
+  } else if (isFiveWink) {
+    contentHtml = `
+      <section class="admin-toolbar">
+        <div class="admin-filters">
+          <button id="btn-create-puzzle" class="button" type="button">+ Create Puzzle</button>
+          <input
+            id="input-search"
+            class="admin-input"
+            type="search"
+            placeholder="Search date or answer…"
+            value="${escapeHtml(adminState.searchQuery)}"
+          />
+          <select id="select-status" class="admin-select">
+            <option value="all" ${adminState.filterStatus === "all" ? "selected" : ""}>All Statuses</option>
+            <option value="draft" ${adminState.filterStatus === "draft" ? "selected" : ""}>Draft</option>
+            <option value="published" ${adminState.filterStatus === "published" ? "selected" : ""}>Published</option>
+            <option value="archived" ${adminState.filterStatus === "archived" ? "selected" : ""}>Archived</option>
+          </select>
+        </div>
+        <button id="btn-refresh" class="admin-btn-sm" type="button">↻ Refresh</button>
+      </section>
 
-      ${
-        adminState.activeTab === "fivewink"
-          ? `
-            <section class="admin-toolbar">
-              <div class="admin-filters">
-                <button id="btn-create-puzzle" class="button" type="button">+ Create Puzzle</button>
-                <input
-                  id="input-search"
-                  class="admin-input"
-                  type="search"
-                  placeholder="Search date or answer…"
-                  value="${escapeHtml(adminState.searchQuery)}"
-                />
-                <select id="select-status" class="admin-select">
-                  <option value="all" ${adminState.filterStatus === "all" ? "selected" : ""}>All Statuses</option>
-                  <option value="draft" ${adminState.filterStatus === "draft" ? "selected" : ""}>Draft</option>
-                  <option value="published" ${adminState.filterStatus === "published" ? "selected" : ""}>Published</option>
-                  <option value="archived" ${adminState.filterStatus === "archived" ? "selected" : ""}>Archived</option>
-                </select>
-              </div>
-              <button id="btn-refresh" class="admin-btn-sm" type="button">↻ Refresh</button>
-            </section>
+      <main class="admin-table-container"></main>
+    `;
+  } else if (isGame2) {
+    contentHtml = `
+      <div class="admin-card admin-state-box">
+        <h2>Game 2 Administration</h2>
+        <p>Admin controls for Game 2 will become available when Game 2 development begins.</p>
+        <span class="admin-badge">Coming Soon</span>
+      </div>
+    `;
+  } else {
+    contentHtml = `
+      <div class="admin-card admin-state-box">
+        <h2>Game 3 Administration</h2>
+        <p>Admin controls for Game 3 will become available when Game 3 development begins.</p>
+        <span class="admin-badge">Coming Soon</span>
+      </div>
+    `;
+  }
 
-            <main class="admin-table-container"></main>
-          `
-          : adminState.activeTab === "game2"
-            ? `
-              <div class="admin-card admin-state-box">
-                <h2>Game 2 Administration</h2>
-                <p>Admin controls for Game 2 will become available when Game 2 development begins.</p>
-                <span class="admin-badge">Coming Soon</span>
-              </div>
-            `
-            : `
-              <div class="admin-card admin-state-box">
-                <h2>Game 3 Administration</h2>
-                <p>Admin controls for Game 3 will become available when Game 3 development begins.</p>
-                <span class="admin-badge">Coming Soon</span>
-              </div>
-            `
-      }
+  app.innerHTML = `
+    <div class="admin-shell">
+      ${headerHtml}
+      ${contentHtml}
     </div>
     <div id="admin-modal-root">${renderModalContent()}</div>
   `;
@@ -502,7 +583,9 @@ function render() {
   if (adminState.activeModal) {
     attachModalHandlers();
   }
-  renderTable();
+  if (isFiveWink) {
+    renderTable();
+  }
 }
 
 function renderPuzzleRow(p) {
@@ -655,20 +738,11 @@ function renderModalContent() {
 function attachEventHandlers() {
   document.getElementById("btn-admin-logout")?.addEventListener("click", handleLogout);
 
-  document.querySelectorAll(".admin-tab").forEach((tabBtn) => {
-    tabBtn.addEventListener("click", () => {
-      const tab = tabBtn.getAttribute("data-tab");
-      if (tab && adminState.activeTab !== tab) {
-        switchTab(tab);
-      }
-    });
-  });
-
-  if (adminState.activeTab === "fivewink") {
+  if (adminState.currentView === "fivewink") {
     document.getElementById("btn-refresh")?.addEventListener("click", () => {
-      const fiveWinkUrl = getTabUrl("fivewink");
+      const fiveWinkUrl = getPanelUrl("fivewink");
       if (typeof window !== "undefined" && window.location) {
-        if (window.location.href === fiveWinkUrl || window.location.pathname.endsWith("/FiveWink/")) {
+        if (window.location.href === fiveWinkUrl || window.location.pathname.toLowerCase().includes("/fivewink")) {
           window.location.reload();
         } else {
           window.location.href = fiveWinkUrl;
@@ -782,55 +856,61 @@ function getPublicSiteRoot() {
   return adminBase.replace(/\/admin\/$/, "/");
 }
 
-function getTabUrl(tab) {
+function getPanelUrl(panel) {
   const basePath = getAdminBasePath();
-  switch (tab) {
+  switch (panel) {
     case "game2":
       return basePath + "Game2/";
     case "game3":
       return basePath + "Game3/";
     case "fivewink":
-    default:
       return basePath + "FiveWink/";
+    case "portal":
+    default:
+      return basePath;
   }
 }
 
-function getTabFromPathname() {
-  if (typeof window === "undefined" || !window.location) return "fivewink";
+function getTabUrl(tab) {
+  return getPanelUrl(tab);
+}
+
+function getViewFromPathname() {
+  if (typeof window === "undefined" || !window.location) return "portal";
   const path = window.location.pathname.toLowerCase();
+  if (path.includes("/fivewink")) {
+    return "fivewink";
+  }
   if (path.includes("/game2")) {
     return "game2";
   }
   if (path.includes("/game3")) {
     return "game3";
   }
-  return "fivewink";
+  return "portal";
 }
 
-function switchTab(tab, updateHistory = true) {
-  if (adminState.activeTab === tab) return;
-  adminState.activeTab = tab;
-  if (updateHistory && typeof window !== "undefined" && window.history?.pushState) {
-    const tabUrl = getTabUrl(tab);
-    window.history.pushState({ tab }, "", tabUrl);
+function getTabFromPathname() {
+  return getViewFromPathname();
+}
+
+function switchTab(panel) {
+  if (typeof window !== "undefined" && window.location) {
+    window.location.href = getPanelUrl(panel);
   }
-  render();
 }
 
 function initAdminRouting() {
   if (typeof window === "undefined" || !window.location) return;
-  const initialTab = getTabFromPathname();
-  adminState.activeTab = initialTab;
+  adminState.currentView = getViewFromPathname();
 
-  if (window.history?.replaceState) {
-    const currentTabUrl = getTabUrl(initialTab);
-    window.history.replaceState({ tab: initialTab }, "", currentTabUrl);
-  }
-
-  window.addEventListener("popstate", (event) => {
-    const targetTab = event.state?.tab || getTabFromPathname();
-    if (targetTab && adminState.activeTab !== targetTab) {
-      adminState.activeTab = targetTab;
+  window.addEventListener("popstate", () => {
+    const targetView = getViewFromPathname();
+    if (adminState.currentView !== targetView) {
+      adminState.currentView = targetView;
+      if (adminState.currentView === "fivewink" && adminState.status === "authorized" && adminState.puzzles.length === 0) {
+        loadPuzzles();
+      }
       render();
     }
   });

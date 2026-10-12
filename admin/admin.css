@@ -397,37 +397,24 @@
   transition: opacity 0.2s, transform 0.2s;
 }
 
-/* Admin Game Tabs */
-.admin-tabs {
-  display: flex;
-  gap: 8px;
-  border-bottom: 2px solid #e5e7eb;
-  margin-bottom: 24px;
-}
-
-.admin-tab {
-  padding: 10px 20px;
-  border: 0;
-  background: transparent;
-  font-size: 0.95rem;
+/* Admin Portal & Navigation */
+.admin-back-link {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.88rem;
   font-weight: 600;
-  color: #4b5563;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  border-radius: 8px 8px 0 0;
-  transition: all 0.15s ease;
-}
-
-.admin-tab:hover {
-  color: #3730a3;
-  background: #f8fafc;
-}
-
-.admin-tab.active {
   color: #4f46e5;
-  border-bottom-color: #4f46e5;
-  background: #eef2ff;
+  text-decoration: none;
+  margin-bottom: 4px;
+}
+
+.admin-back-link:hover {
+  text-decoration: underline;
+  color: #3730a3;
+}
+
+.admin-portal-section {
+  margin-top: 8px;
 }
 
 @media (max-width: 768px) {

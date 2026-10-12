@@ -1134,56 +1134,67 @@ test("conditional admin navigation link exists in primary navigation and is hidd
   assert.doesNotMatch(appJs, /user\.username ===/);
 });
 
-test("admin panel game tabs: renders FiveWink, Game 2, and Game 3 tabs with Coming Soon states", async () => {
+test("admin panel portal: renders central Admin Panels buffer page and dedicated game pages with back links", async () => {
   const adminJs = await readFile(new URL("../admin/admin.js", import.meta.url), "utf8");
   const adminCss = await readFile(new URL("../admin/admin.css", import.meta.url), "utf8");
 
-  // Verify activeTab in adminState
-  assert.match(adminJs, /activeTab:\s*"fivewink"/);
+  // Verify currentView in adminState defaults to portal
+  assert.match(adminJs, /currentView:\s*"portal"/);
 
-  // Verify tabs in render()
-  assert.match(adminJs, /data-tab="fivewink"/);
-  assert.match(adminJs, /data-tab="game2"/);
-  assert.match(adminJs, /data-tab="game3"/);
+  // Verify central portal landing page contains Admin Panels heading and card grid
+  assert.match(adminJs, /<h1>Admin Panels<\/h1>/);
+  assert.match(adminJs, /Select an administration panel to continue\./);
+  assert.match(adminJs, /class="card-grid"/);
+  assert.match(adminJs, /Open Panel/);
+
+  // Verify dedicated FiveWink page has back link and NO multi-game tabs
+  assert.match(adminJs, /← Admin Portal/);
+  assert.match(adminJs, /FiveWink Administration/);
+  assert.doesNotMatch(adminJs, /class="admin-tabs"/);
+  assert.doesNotMatch(adminJs, /data-tab="fivewink"/);
 
   // Verify Coming Soon states for Game 2 and Game 3
   assert.match(adminJs, /Game 2 Administration/);
   assert.match(adminJs, /Game 3 Administration/);
   assert.match(adminJs, /Coming Soon/);
 
-  // Verify CSS classes for tabs
-  assert.match(adminCss, /\.admin-tabs/);
-  assert.match(adminCss, /\.admin-tab/);
+  // Verify CSS classes for portal and back navigation
+  assert.match(adminCss, /\.admin-back-link/);
+  assert.match(adminCss, /\.admin-portal-section/);
+  assert.doesNotMatch(adminCss, /\.admin-tabs/);
 });
 
-test("admin panel tab-specific URLs and routing helpers", async () => {
+test("admin panel portal URLs, routing helpers, and static entry points", async () => {
   const adminJs = await readFile(new URL("../admin/admin.js", import.meta.url), "utf8");
 
   // Verify routing functions exist
   assert.match(adminJs, /function getAdminBasePath\(\)/);
   assert.match(adminJs, /function getPublicSiteRoot\(\)/);
-  assert.match(adminJs, /function getTabUrl\(tab\)/);
-  assert.match(adminJs, /function getTabFromPathname\(\)/);
-  assert.match(adminJs, /function switchTab\(tab/);
+  assert.match(adminJs, /function getPanelUrl\(panel\)/);
+  assert.match(adminJs, /function getViewFromPathname\(\)/);
   assert.match(adminJs, /function initAdminRouting\(\)/);
 
-  // Verify URL paths for each tab
+  // Verify URL paths for each panel
   assert.match(adminJs, /basePath \+ "FiveWink\/"/);
   assert.match(adminJs, /basePath \+ "Game2\/"/);
   assert.match(adminJs, /basePath \+ "Game3\/"/);
 
-  // Verify history pushState and popstate
-  assert.match(adminJs, /window\.history\?\.pushState/);
+  // Verify popstate listener
   assert.match(adminJs, /window\.addEventListener\("popstate"/);
 
   // Verify refresh button targets FiveWink URL
-  assert.match(adminJs, /getTabUrl\("fivewink"\)/);
+  assert.match(adminJs, /getPanelUrl\("fivewink"\)/);
   assert.match(adminJs, /window\.location\.reload\(\)/);
 
   // Verify static HTML entry points exist for GitHub Pages direct navigation
+  const portalIndex = await readFile(new URL("../admin/index.html", import.meta.url), "utf8");
   const fiveWinkIndex = await readFile(new URL("../admin/FiveWink/index.html", import.meta.url), "utf8");
   const game2Index = await readFile(new URL("../admin/Game2/index.html", import.meta.url), "utf8");
   const game3Index = await readFile(new URL("../admin/Game3/index.html", import.meta.url), "utf8");
+
+  assert.match(portalIndex, /<title>EmniFun Admin — Portal<\/title>/);
+  assert.match(portalIndex, /<script type="module" src="\.\/admin\.js"><\/script>/);
+  assert.match(portalIndex, /<link rel="stylesheet" href="\.\/admin\.css">/);
 
   assert.match(fiveWinkIndex, /<script type="module" src="\.\.\/admin\.js"><\/script>/);
   assert.match(game2Index, /<script type="module" src="\.\.\/admin\.js"><\/script>/);
