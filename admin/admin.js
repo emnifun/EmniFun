@@ -467,7 +467,6 @@ function render() {
                   <option value="all" ${adminState.filterStatus === "all" ? "selected" : ""}>All Statuses</option>
                   <option value="draft" ${adminState.filterStatus === "draft" ? "selected" : ""}>Draft</option>
                   <option value="published" ${adminState.filterStatus === "published" ? "selected" : ""}>Published</option>
-                  <option value="unpublished" ${adminState.filterStatus === "unpublished" ? "selected" : ""}>Unpublished</option>
                   <option value="archived" ${adminState.filterStatus === "archived" ? "selected" : ""}>Archived</option>
                 </select>
               </div>
