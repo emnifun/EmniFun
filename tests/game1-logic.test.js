@@ -239,4 +239,60 @@ assert(GAME1_CONFIG.seventhAttemptCloseRule === "exact-answer", "Seventh close r
   assert(Array.isArray(state.feedback[1]), "feedback[1] must be an array.");
 }
 
+{
+  // Test: Completed puzzle restoration faithfully preserves attempts timeline and clue-consumed rows
+  const state = createGame1State();
+  const scoutEval = ["correct", "correct", "correct", "correct", "correct"];
+  const humanEval = ["absent", "wrong-position", "absent", "absent", "absent"];
+  const plantEval = ["absent", "absent", "wrong-position", "wrong-position", "absent"];
+  const payload = {
+    attempts: ["guess", "guess", "clue", "clue", "clue", "guess"],
+    guesses: ["HUMAN", "PLANT", "SCOUT"],
+    evaluations: [humanEval, plantEval, scoutEval],
+    cluesState: ["skipped", "skipped", "used", "used", "used"],
+    cluesUsed: 3,
+    status: "finished",
+    result: GAME1_RESULT.SOLVED,
+    answer: "SCOUT"
+  };
+
+  const res = restoreGame1State(state, payload);
+  assert(res.ok, "Restoration with clues must succeed.");
+  assert(state.guesses[0] === "HUMAN", "Row 1 must be HUMAN.");
+  assert(state.guesses[1] === "PLANT", "Row 2 must be PLANT.");
+  assert(state.guesses[2] === null, "Row 3 must be null (clue-consumed).");
+  assert(state.guesses[3] === null, "Row 4 must be null (clue-consumed).");
+  assert(state.guesses[4] === null, "Row 5 must be null (clue-consumed).");
+  assert(state.guesses[5] === "SCOUT", "Row 6 must be SCOUT.");
+
+  assert(state.feedback[2] === null, "Row 3 feedback must be null.");
+  assert(state.feedback[3] === null, "Row 4 feedback must be null.");
+  assert(state.feedback[4] === null, "Row 5 feedback must be null.");
+  assert(Array.isArray(state.feedback[5]), "Row 6 feedback must be an array.");
+  assert(state.feedback[5] === scoutEval, "SCOUT evaluation must be at state.feedback[5], not state.feedback[2].");
+}
+
+{
+  // Test: Resumed active game where a clue was used restores to correct next attempt row
+  const state = createGame1State();
+  const humanEval = ["absent", "wrong-position", "absent", "absent", "absent"];
+  const payload = {
+    attempts: ["guess", "clue", null, null, null, null],
+    guesses: ["HUMAN"],
+    evaluations: [humanEval],
+    cluesState: ["skipped", "used", "available", "available", "available"],
+    cluesUsed: 1,
+    status: "playing"
+  };
+
+  const res = restoreGame1State(state, payload);
+  assert(res.ok, "Resumed active restoration with clue must succeed.");
+  assert(state.guesses[0] === "HUMAN", "Row 1 must be HUMAN.");
+  assert(state.guesses[1] === null, "Row 2 must be null (clue-consumed).");
+  assert(state.attempts[0] === "guess", "Attempt 0 must be guess.");
+  assert(state.attempts[1] === "clue", "Attempt 1 must be clue.");
+  assert(state.attempts[2] === null, "Attempt 2 must be null.");
+  assert(getNextNormalAttemptIndex(state) === 2, "Next normal attempt must be row 3 (index 2).");
+}
+
 console.log("FiveWink client-state checks passed.");

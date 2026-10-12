@@ -211,27 +211,40 @@ export function restoreGame1State(state, data) {
   if (!state || !data) return { ok: false, message: "Invalid restoration payload." };
 
   if (Array.isArray(data.attempts)) {
-    data.attempts.forEach((att, idx) => {
-      if (att && idx >= 0 && idx < GAME1_CONFIG.normalAttempts) {
-        state.attempts[idx] = att;
+    let guessIndex = 0;
+    data.attempts.forEach((att, rowIdx) => {
+      if (rowIdx >= 0 && rowIdx < GAME1_CONFIG.normalAttempts) {
+        state.attempts[rowIdx] = att || null;
+        if (att === "guess") {
+          const rawGuess = Array.isArray(data.guesses) ? data.guesses[guessIndex] : null;
+          if (rawGuess) {
+            const norm = normalizeGuess(rawGuess);
+            state.guesses[rowIdx] = norm;
+            state.usedGuesses.add(norm);
+          }
+          const evalItem = Array.isArray(data.evaluations) ? data.evaluations[guessIndex] : null;
+          if (Array.isArray(evalItem) && evalItem.length === 5) {
+            state.feedback[rowIdx] = evalItem;
+          }
+          guessIndex += 1;
+        } else {
+          state.guesses[rowIdx] = null;
+          state.feedback[rowIdx] = null;
+        }
       }
     });
-  }
-
-  if (Array.isArray(data.guesses)) {
+  } else if (Array.isArray(data.guesses)) {
+    // Fallback if attempts array is unavailable
     data.guesses.forEach((g, idx) => {
       if (g && idx >= 0 && idx < GAME1_CONFIG.normalAttempts) {
         const norm = normalizeGuess(g);
+        state.attempts[idx] = "guess";
         state.guesses[idx] = norm;
         state.usedGuesses.add(norm);
-      }
-    });
-  }
-
-  if (Array.isArray(data.evaluations)) {
-    data.evaluations.forEach((evalItem, idx) => {
-      if (Array.isArray(evalItem) && evalItem.length === 5 && idx >= 0 && idx < GAME1_CONFIG.normalAttempts) {
-        state.feedback[idx] = evalItem;
+        const evalItem = Array.isArray(data.evaluations) ? data.evaluations[idx] : null;
+        if (Array.isArray(evalItem) && evalItem.length === 5) {
+          state.feedback[idx] = evalItem;
+        }
       }
     });
   }
