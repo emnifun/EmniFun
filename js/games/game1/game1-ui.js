@@ -10,7 +10,8 @@ import {
   applyNormalGuessResult,
   applySeventhGuessResult,
   applyClueResult,
-  applySeventhSkipResult
+  applySeventhSkipResult,
+  restoreGame1State
 } from "./game1-logic.js";
 import {
   getPublishedPuzzleForToday
@@ -36,7 +37,45 @@ export async function renderGame1(container) {
   try {
     puzzle = await getPublishedPuzzleForToday();
   } catch (error) {
-    const isAlreadyPlayed = error?.message?.toLowerCase().includes("already played");
+    const isAlreadyPlayed = Boolean(error?.alreadyPlayed) || error?.message?.toLowerCase().includes("already played");
+    if (error?.completedData) {
+      const completedPuzzle = {
+        id: error.completedData.puzzleId,
+        game: "game1",
+        date: error.completedData.date,
+        clues: error.completedData.clues,
+        completed: true,
+        alreadyPlayed: true,
+        answer: error.completedData.answer,
+        result: error.completedData.result,
+        attempts: error.completedData.attempts,
+        guesses: error.completedData.guesses,
+        evaluations: error.completedData.evaluations,
+        cluesState: error.completedData.cluesState,
+        cluesUsed: error.completedData.cluesUsed,
+        seventhGuess: error.completedData.seventhGuess,
+        seventhEvaluation: error.completedData.seventhEvaluation,
+        status: "finished"
+      };
+      container.innerHTML = `
+        <div class="placeholder">
+          <h2>Already Played</h2>
+          <p>You have already played this FiveWink puzzle. Check back for the next puzzle!</p>
+          <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; justify-content: center;">
+            <button id="btn-view-completed" class="button" type="button">View Completed Puzzle</button>
+            <button id="btn-completed-back" class="button secondary" type="button">Back to Games</button>
+          </div>
+        </div>
+      `;
+      container.querySelector("#btn-completed-back")?.addEventListener("click", () => {
+        document.title = "EmniFun";
+        container.dispatchEvent(new CustomEvent("game1-back"));
+      });
+      container.querySelector("#btn-view-completed")?.addEventListener("click", () => {
+        renderGame1Shell(container, completedPuzzle);
+      });
+      return;
+    }
     container.innerHTML =
       '<div class="placeholder"><h2>' +
       (isAlreadyPlayed ? "Already Played" : "FiveWink could not load") +
@@ -52,25 +91,34 @@ export async function renderGame1(container) {
     return;
   }
 
+  if (puzzle.completed) {
+    container.innerHTML = `
+      <div class="placeholder">
+        <h2>Already Played</h2>
+        <p>You have already played this FiveWink puzzle. Check back for the next puzzle!</p>
+        <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; justify-content: center;">
+          <button id="btn-view-completed" class="button" type="button">View Completed Puzzle</button>
+          <button id="btn-completed-back" class="button secondary" type="button">Back to Games</button>
+        </div>
+      </div>
+    `;
+    container.querySelector("#btn-completed-back")?.addEventListener("click", () => {
+      document.title = "EmniFun";
+      container.dispatchEvent(new CustomEvent("game1-back"));
+    });
+    container.querySelector("#btn-view-completed")?.addEventListener("click", () => {
+      renderGame1Shell(container, puzzle);
+    });
+    return;
+  }
+
+  renderGame1Shell(container, puzzle);
+}
+
+function renderGame1Shell(container, puzzle) {
   const state = createGame1State();
-  if (puzzle.resumed && Array.isArray(puzzle.attempts) && Array.isArray(puzzle.guesses)) {
-    puzzle.attempts.forEach((att, idx) => {
-      if (att) {
-        state.attempts[idx] = att;
-        state.feedback[idx] = att;
-      }
-    });
-    puzzle.guesses.forEach((g, idx) => {
-      if (g) {
-        state.guesses[idx] = g;
-        state.usedGuesses.add(g);
-      }
-    });
-    if (Array.isArray(puzzle.cluesState)) {
-      state.clues = puzzle.cluesState;
-    }
-    state.cluesUsed = Number(puzzle.cluesUsed) || 0;
-    if (puzzle.status) state.status = puzzle.status;
+  if (puzzle.resumed || puzzle.completed) {
+    restoreGame1State(state, puzzle);
   }
   let currentInput = "";
   let gameToken = puzzle.gameToken;
@@ -433,7 +481,7 @@ export async function renderGame1(container) {
 
     state.guesses.forEach((guess, attemptIndex) => {
       const feedback = state.feedback[attemptIndex];
-      if (!guess || !feedback) return;
+      if (!guess || !Array.isArray(feedback)) return;
 
       feedback.forEach((status, letterIndex) => {
         const letter = guess[letterIndex];
@@ -565,8 +613,13 @@ export async function renderGame1(container) {
 
   renderBoard();
   renderClues();
-  renderKeyboard();
-  focusGame();
+  if (state.status === "finished") {
+    renderResult();
+    syncKeyboardVisibility();
+  } else {
+    renderKeyboard();
+    focusGame();
+  }
 
   // Position the page once when FiveWink first opens. Later board/keyboard
   // rerenders do not call this again, so normal player scrolling is preserved.

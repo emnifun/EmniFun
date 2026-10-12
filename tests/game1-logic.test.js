@@ -17,7 +17,8 @@ import {
   getNextNormalAttemptIndex,
   isEnglishFiveLetterWord,
   isGuessAlreadyUsed,
-  sanitizeGuessInput
+  sanitizeGuessInput,
+  restoreGame1State
 } from "../js/games/game1/game1-logic.js";
 
 function assert(condition, message) {
@@ -168,5 +169,74 @@ function assert(condition, message) {
 assert(GAME1_CONFIG.normalAttempts === 6, "FiveWink must keep six normal attempts.");
 assert(GAME1_CONFIG.clueCount === 5, "FiveWink must keep five clues.");
 assert(GAME1_CONFIG.seventhAttemptCloseRule === "exact-answer", "Seventh close rule must remain unchanged.");
+
+{
+  // Test: Active session restoration correctly restores state and feedback is an array of tile statuses
+  const state = createGame1State();
+  const payload = {
+    attempts: ["guess", null, null, null, null, null],
+    guesses: ["PLANT"],
+    evaluations: [["absent", "absent", "wrong-position", "wrong-position", "absent"]],
+    cluesState: ["skipped", "available", "available", "available", "available"],
+    cluesUsed: 0,
+    status: "playing"
+  };
+
+  const res = restoreGame1State(state, payload);
+  assert(res.ok, "Restoration must succeed.");
+  assert(state.guesses[0] === "PLANT", "First row guess must be PLANT.");
+  assert(state.attempts[0] === "guess", "First row attempt must be guess.");
+  assert(Array.isArray(state.feedback[0]), "feedback[0] MUST be an Array, not a string.");
+  assert(state.feedback[0].length === 5, "feedback[0] must have 5 tile evaluations.");
+  assert(state.feedback[0][0] === "absent", "First tile status must be absent.");
+  assert(state.feedback[0][2] === "wrong-position", "Third tile status must be wrong-position.");
+  assert(state.status === "playing", "Status must be playing.");
+  assert(getNextNormalAttemptIndex(state) === 1, "Next active row must be row 2 (index 1).");
+  assert(isGuessAlreadyUsed(state, "PLANT"), "PLANT must be in usedGuesses.");
+
+  // Test: Next guess application works smoothly on restored state without polluting future rows
+  const secondResponse = {
+    ok: true,
+    attemptIndex: 1,
+    feedback: ["absent", "absent", "absent", "correct", "absent"],
+    solved: false,
+    seventhStage: false,
+    finished: false
+  };
+
+  const applied = applyNormalGuessResult(state, "SCRAP", secondResponse);
+  assert(applied.ok, "Applying second guess must succeed.");
+  assert(state.guesses[1] === "SCRAP", "Row 2 must be SCRAP.");
+  assert(state.guesses[2] === null, "Row 3 must remain null (not copied from SCRAP).");
+  assert(getNextNormalAttemptIndex(state) === 2, "Next active row must now be row 3 (index 2).");
+}
+
+{
+  // Test: Completed puzzle restoration
+  const state = createGame1State();
+  const completedPayload = {
+    attempts: ["guess", "guess", null, null, null, null],
+    guesses: ["PLANT", "HUMAN"],
+    evaluations: [
+      ["absent", "absent", "wrong-position", "wrong-position", "absent"],
+      ["correct", "correct", "correct", "correct", "correct"]
+    ],
+    cluesState: ["skipped", "skipped", "available", "available", "available"],
+    cluesUsed: 0,
+    status: "finished",
+    result: GAME1_RESULT.SOLVED,
+    answer: "HUMAN"
+  };
+
+  const res = restoreGame1State(state, completedPayload);
+  assert(res.ok, "Completed restoration must succeed.");
+  assert(state.status === "finished", "Status must be finished.");
+  assert(state.result === GAME1_RESULT.SOLVED, "Result must be SOLVED.");
+  assert(state.answer === "HUMAN", "Answer must be HUMAN.");
+  assert(state.guesses[0] === "PLANT", "First guess must be PLANT.");
+  assert(state.guesses[1] === "HUMAN", "Second guess must be HUMAN.");
+  assert(Array.isArray(state.feedback[0]), "feedback[0] must be an array.");
+  assert(Array.isArray(state.feedback[1]), "feedback[1] must be an array.");
+}
 
 console.log("FiveWink client-state checks passed.");

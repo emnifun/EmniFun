@@ -272,7 +272,7 @@ function validatePuzzleForPlay(puzzle) {
   if (
     !puzzle ||
     puzzle.game !== "game1" ||
-    puzzle.status !== "published" ||
+    !["published", "archived"].includes(puzzle.status) ||
     typeof puzzle.puzzle_id !== "string" ||
     typeof puzzle.date !== "string" ||
     !isFiveLetterGuess(puzzle.answer)
@@ -348,12 +348,109 @@ async function handleExistingPlay(env, sessionId, puzzle, clues, request) {
 
   const now = Math.floor(Date.now() / 1000);
 
-  // If session is still active and unexpired, resume the same session!
+  if (!existingSession) {
+    return jsonResponse(
+      {
+        ok: false,
+        alreadyPlayed: true,
+        message: "You have already played this FiveWink puzzle. Check back for the next puzzle!"
+      },
+      403,
+      {},
+      request,
+      env
+    );
+  }
+
+  let attempts;
+  let guesses;
+  let cluesState;
+  try {
+    attempts = JSON.parse(existingSession.attempts_json);
+    guesses = JSON.parse(existingSession.guesses_json);
+    cluesState = JSON.parse(existingSession.clues_json);
+  } catch {
+    return jsonResponse(
+      { ok: false, message: "Game session data is invalid." },
+      500,
+      {},
+      request,
+      env
+    );
+  }
+
+  const answer = normalizeGuess(puzzle.answer);
+  const evaluations = guesses.map((g) => evaluateGuess(g, answer));
+
+  // Case 1: Completed / Finished puzzle -> Read-only completed state
+  if (existingSession.status === "finished") {
+    let seventhEvaluation = null;
+    if (existingSession.seventh_guess) {
+      seventhEvaluation = evaluateGuess(existingSession.seventh_guess, answer);
+    }
+
+    const completedPayload = {
+      alreadyPlayed: true,
+      completed: true,
+      puzzleId: puzzle.puzzle_id,
+      date: puzzle.date,
+      length: 5,
+      clues,
+      answer,
+      result: existingSession.result,
+      status: "finished",
+      attempts,
+      guesses,
+      evaluations,
+      cluesState,
+      cluesUsed: existingSession.clues_used,
+      seventhGuess: existingSession.seventh_guess,
+      seventhEvaluation
+    };
+
+    const url = request ? new URL(request.url) : null;
+    if (url?.searchParams?.get("view") === "completed" || url?.searchParams?.get("completed") === "true") {
+      return jsonResponse(
+        {
+          ok: true,
+          ...completedPayload
+        },
+        200,
+        {},
+        request,
+        env
+      );
+    }
+
+    return jsonResponse(
+      {
+        ok: false,
+        message: "You have already played this FiveWink puzzle. Check back for the next puzzle!",
+        ...completedPayload
+      },
+      403,
+      {},
+      request,
+      env
+    );
+  }
+
+  // Case 2: Active or Awaiting-seventh puzzle -> Resume playable session
   if (
-    existingSession &&
-    (existingSession.status === "playing" || existingSession.status === "awaiting-seventh") &&
-    existingSession.expires_at > now
+    existingSession.status === "playing" ||
+    existingSession.status === "awaiting-seventh"
   ) {
+    // If the active gameplay window expired, refresh expires_at so subsequent gameplay succeeds
+    if (existingSession.expires_at <= now) {
+      const refreshedExpiresAt = now + 36 * 60 * 60;
+      await env.DB.prepare(
+        "UPDATE fivewink_sessions SET expires_at = ?1, updated_at = ?2 WHERE session_id = ?3"
+      )
+        .bind(refreshedExpiresAt, now, existingSession.session_id)
+        .run();
+      existingSession.expires_at = refreshedExpiresAt;
+    }
+
     const gameToken = await createSessionToken(
       {
         sessionId: existingSession.session_id,
@@ -372,9 +469,10 @@ async function handleExistingPlay(env, sessionId, puzzle, clues, request) {
         length: 5,
         clues,
         gameToken,
-        attempts: JSON.parse(existingSession.attempts_json),
-        guesses: JSON.parse(existingSession.guesses_json),
-        cluesState: JSON.parse(existingSession.clues_json),
+        attempts,
+        guesses,
+        evaluations,
+        cluesState,
         cluesUsed: existingSession.clues_used,
         status: existingSession.status
       },
@@ -385,7 +483,6 @@ async function handleExistingPlay(env, sessionId, puzzle, clues, request) {
     );
   }
 
-  // If session is finished or expired/cleaned up, reject replay!
   return jsonResponse(
     {
       ok: false,
@@ -407,7 +504,7 @@ async function handlePuzzle(request, env) {
 
   const puzzle = requestedPuzzleId
     ? await env.DB.prepare(
-        "SELECT puzzle_id, game, date, answer, clues_json, status FROM fivewink_puzzles WHERE game = 'game1' AND puzzle_id = ?1 AND status = 'published' LIMIT 1"
+        "SELECT puzzle_id, game, date, answer, clues_json, status FROM fivewink_puzzles WHERE game = 'game1' AND puzzle_id = ?1 AND (status = 'published' OR status = 'archived') LIMIT 1"
       )
         .bind(requestedPuzzleId)
         .first()
@@ -882,15 +979,13 @@ export async function cleanupFiveWinkSessions(env) {
   if (!env?.DB) return;
 
   const now = Math.floor(Date.now() / 1000);
-  const FINISHED_SESSION_RETENTION_SECONDS = 86400;
-  const finishedCutoff = now - FINISHED_SESSION_RETENTION_SECONDS;
 
   return env.DB.prepare(
     `DELETE FROM fivewink_sessions
       WHERE expires_at <= ?1
-         OR (status = 'finished' AND updated_at <= ?2)`
+        AND session_id NOT IN (SELECT session_id FROM fivewink_plays)`
   )
-    .bind(now, finishedCutoff)
+    .bind(now)
     .run();
 }
 

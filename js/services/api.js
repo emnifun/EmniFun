@@ -15,6 +15,8 @@ export class FiveWinkApiError extends Error {
     this.name = "FiveWinkApiError";
     this.status = status;
     this.duplicate = Boolean(options.duplicate);
+    this.alreadyPlayed = Boolean(options.alreadyPlayed);
+    this.completedData = options.completedData || null;
   }
 }
 
@@ -58,7 +60,11 @@ async function requestJson(path, options = {}) {
     throw new FiveWinkApiError(
       data?.message || "FiveWink could not complete that action.",
       response.status,
-      { duplicate: data?.duplicate }
+      {
+        duplicate: data?.duplicate,
+        alreadyPlayed: data?.alreadyPlayed,
+        completedData: data?.completed ? data : null
+      }
     );
   }
 

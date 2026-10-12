@@ -496,11 +496,15 @@ test("18, 19, 20: FiveWink session cleanup removes expired and finished sessions
   await cleanupFiveWinkSessions(env);
 
   // Check results:
-  // sess-expired should be DELETED
+  // sess-expired (unlinked guest session) should be DELETED
   assert.equal(db.prepare("SELECT COUNT(*) as c FROM fivewink_sessions WHERE session_id = 'sess-expired'").get().c, 0);
 
-  // sess-old-finished should be DELETED
-  assert.equal(db.prepare("SELECT COUNT(*) as c FROM fivewink_sessions WHERE session_id = 'sess-old-finished'").get().c, 0);
+  // sess-old-finished (linked to authenticated play) MUST SURVIVE cleanup
+  assert.equal(
+    db.prepare("SELECT COUNT(*) as c FROM fivewink_sessions WHERE session_id = 'sess-old-finished'").get().c,
+    1,
+    "Finished sessions belonging to authenticated players must survive cleanup"
+  );
 
   // sess-active must REMAIN
   assert.equal(db.prepare("SELECT COUNT(*) as c FROM fivewink_sessions WHERE session_id = 'sess-active'").get().c, 1);
@@ -511,4 +515,299 @@ test("18, 19, 20: FiveWink session cleanup removes expired and finished sessions
     1,
     "fivewink_plays must never be cleaned up prematurely"
   );
+});
+
+test("21: Active session restoration returns evaluations array and does NOT leak the answer", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  seedPuzzle(db, { puzzleId: "puz-resume-test", date: "2026-10-12", answer: "HUMAN" });
+
+  const { sessionToken } = await createTestAccount(db, {
+    emnifeedId: "EF-resume-user-1",
+    gamerTag: "ResumeUser"
+  });
+
+  // 1. Initial play request
+  const startReq = new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-resume-test", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${sessionToken}` }
+  });
+  const startRes = await worker.fetch(startReq, env);
+  const startData = await startRes.json();
+  assert.equal(startData.ok, true);
+  assert.ok(startData.gameToken);
+  assert.equal(startData.answer, undefined, "Active play must NEVER leak the answer!");
+
+  // 2. Submit first guess: PLANT
+  const guessReq = new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: {
+      Origin: allowedOrigin,
+      "Content-Type": "application/json",
+      Cookie: `__Host-emnifun_session=${sessionToken}`
+    },
+    body: JSON.stringify({
+      puzzleId: "puz-resume-test",
+      guess: "PLANT",
+      gameToken: startData.gameToken
+    })
+  });
+  const guessRes = await worker.fetch(guessReq, env);
+  const guessData = await guessRes.json();
+  assert.equal(guessData.ok, true);
+
+  // 3. User logs out and returns (re-requests puzzle)
+  const resumeReq = new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-resume-test", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${sessionToken}` }
+  });
+  const resumeRes = await worker.fetch(resumeReq, env);
+  const resumeData = await resumeRes.json();
+
+  assert.equal(resumeData.ok, true);
+  assert.equal(resumeData.resumed, true);
+  assert.ok(resumeData.gameToken);
+  assert.equal(resumeData.answer, undefined, "Resumed active play must NEVER leak the answer!");
+  assert.deepEqual(resumeData.guesses, ["PLANT"]);
+  assert.ok(Array.isArray(resumeData.evaluations), "evaluations must be an Array");
+  assert.equal(resumeData.evaluations.length, 1);
+  assert.ok(Array.isArray(resumeData.evaluations[0]), "evaluations[0] must be an Array");
+  assert.equal(resumeData.evaluations[0].length, 5);
+  // PLANT against HUMAN:
+  // P: absent, L: absent, A: wrong-position, N: wrong-position, T: absent
+  assert.deepEqual(resumeData.evaluations[0], ["absent", "absent", "wrong-position", "wrong-position", "absent"]);
+
+  // 4. Submit second guess SCRAP with resumed gameToken
+  const secondGuessReq = new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: {
+      Origin: allowedOrigin,
+      "Content-Type": "application/json",
+      Cookie: `__Host-emnifun_session=${sessionToken}`
+    },
+    body: JSON.stringify({
+      puzzleId: "puz-resume-test",
+      guess: "SCRAP",
+      gameToken: resumeData.gameToken
+    })
+  });
+  const secondGuessRes = await worker.fetch(secondGuessReq, env);
+  const secondGuessData = await secondGuessRes.json();
+  assert.equal(secondGuessData.ok, true);
+  assert.equal(secondGuessData.attemptIndex, 1);
+});
+
+test("22: Completed puzzle returns completed=true, previous guesses, evaluations, result, answer, and NO gameToken", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  seedPuzzle(db, { puzzleId: "puz-complete-test", date: "2026-10-12", answer: "HUMAN" });
+
+  const { sessionToken } = await createTestAccount(db, {
+    emnifeedId: "EF-complete-user-1",
+    gamerTag: "CompleteUser"
+  });
+
+  // 1. Initial play
+  const startReq = new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-complete-test", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${sessionToken}` }
+  });
+  const startRes = await worker.fetch(startReq, env);
+  const startData = await startRes.json();
+
+  // 2. Guess 1: PLANT
+  const guess1Req = new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "puz-complete-test", guess: "PLANT", gameToken: startData.gameToken })
+  });
+  const guess1Res = await worker.fetch(guess1Req, env);
+  const guess1Data = await guess1Res.json();
+
+  // 3. Guess 2: HUMAN (solves the puzzle!)
+  const guess2Req = new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "puz-complete-test", guess: "HUMAN", gameToken: guess1Data.gameToken })
+  });
+  const guess2Res = await worker.fetch(guess2Req, env);
+  const guess2Data = await guess2Res.json();
+  assert.equal(guess2Data.ok, true);
+  assert.equal(guess2Data.solved, true);
+  assert.equal(guess2Data.finished, true);
+
+  // 4a. Default replay attempt: rejects with 403 alreadyPlayed but attaches completed payload
+  const replayReq = new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-complete-test", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${sessionToken}` }
+  });
+  const replayRes = await worker.fetch(replayReq, env);
+  assert.equal(replayRes.status, 403);
+  const replayData = await replayRes.json();
+  assert.equal(replayData.alreadyPlayed, true);
+  assert.equal(replayData.completed, true);
+  assert.equal(replayData.gameToken, undefined);
+
+  // 4b. Completed view request returns 200 OK
+  const revisitReq = new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-complete-test&view=completed", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${sessionToken}` }
+  });
+  const revisitRes = await worker.fetch(revisitReq, env);
+  assert.equal(revisitRes.status, 200);
+  const revisitData = await revisitRes.json();
+
+  assert.equal(revisitData.ok, true);
+  assert.equal(revisitData.completed, true);
+  assert.equal(revisitData.alreadyPlayed, true);
+  assert.equal(revisitData.status, "finished");
+  assert.equal(revisitData.result, "SOLVED");
+  assert.equal(revisitData.answer, "HUMAN");
+  assert.equal(revisitData.gameToken, undefined, "Completed view must NOT contain a gameToken!");
+  assert.deepEqual(revisitData.guesses, ["PLANT", "HUMAN"]);
+  assert.equal(revisitData.evaluations.length, 2);
+  assert.deepEqual(revisitData.evaluations[1], ["correct", "correct", "correct", "correct", "correct"]);
+
+  // 5. Read-only verification: Trying to submit another guess must fail
+  const cheatReq = new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "puz-complete-test", guess: "OTHER", gameToken: guess2Data.gameToken })
+  });
+  const cheatRes = await worker.fetch(cheatReq, env);
+  assert.equal(cheatRes.status, 400);
+  const cheatData = await cheatRes.json();
+  assert.equal(cheatData.ok, false);
+  assert.match(cheatData.message, /ended/i);
+});
+
+test("23: Account isolation: User A cannot view User B's completed puzzle", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  seedPuzzle(db, { puzzleId: "puz-iso-test", date: "2026-10-12", answer: "HUMAN" });
+
+  const userA = await createTestAccount(db, { emnifeedId: "EF-userA", gamerTag: "UserA" });
+  const userB = await createTestAccount(db, { emnifeedId: "EF-userB", gamerTag: "UserB" });
+
+  // User A completes the puzzle
+  const startReq = new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-iso-test", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${userA.sessionToken}` }
+  });
+  const startData = await (await worker.fetch(startReq, env)).json();
+  await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "puz-iso-test", guess: "HUMAN", gameToken: startData.gameToken })
+  }), env);
+
+  // User B requests the puzzle: must get a fresh new game, NOT User A's completed game
+  const reqB = new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-iso-test", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${userB.sessionToken}` }
+  });
+  const resB = await worker.fetch(reqB, env);
+  const dataB = await resB.json();
+  assert.equal(dataB.ok, true);
+  assert.equal(dataB.completed, undefined, "User B must not see User A's completed state");
+  assert.equal(dataB.resumed, undefined);
+  assert.ok(dataB.gameToken, "User B gets a fresh gameToken to play");
+});
+
+test("24: Future Archive and expiration scenario: unfinished puzzle survives expiration and remains restorable by original puzzle_id", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  const now = Math.floor(Date.now() / 1000);
+
+  // Puzzle A created in the past
+  seedPuzzle(db, { puzzleId: "puz-archive-A", date: "2026-09-01", answer: "HUMAN" });
+  const { sessionToken } = await createTestAccount(db, {
+    emnifeedId: "EF-archive-player",
+    gamerTag: "ArchivePlayer"
+  });
+
+  // User starts Puzzle A and guesses PLANT
+  const startReq = new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-archive-A", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${sessionToken}` }
+  });
+  const startData = await (await worker.fetch(startReq, env)).json();
+
+  await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "puz-archive-A", guess: "PLANT", gameToken: startData.gameToken })
+  }), env);
+
+  // Time passes: session expires (simulate 100 days later)
+  db.prepare("UPDATE fivewink_sessions SET expires_at = ? WHERE puzzle_id = 'puz-archive-A'").run(now - 10000);
+
+  // Session cleanup runs
+  await cleanupFiveWinkSessions(env);
+
+  // Verify session was NOT deleted because it belongs to an authenticated player in fivewink_plays
+  const sessRow = db.prepare("SELECT * FROM fivewink_sessions WHERE puzzle_id = 'puz-archive-A'").get();
+  assert.ok(sessRow, "Durable player session must survive past expiration");
+
+  // Move Puzzle A to 'archived' status (simulate future archive transition)
+  db.prepare("UPDATE fivewink_puzzles SET status = 'archived' WHERE puzzle_id = 'puz-archive-A'").run();
+
+  // User accesses Puzzle A later by original puzzle_id
+  const restoreReq = new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-archive-A", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${sessionToken}` }
+  });
+  const restoreRes = await worker.fetch(restoreReq, env);
+  assert.equal(restoreRes.status, 200);
+  const restoreData = await restoreRes.json();
+
+  assert.equal(restoreData.ok, true);
+  assert.equal(restoreData.resumed, true);
+  assert.ok(restoreData.gameToken, "Fresh gameToken must be issued upon resumption");
+  assert.deepEqual(restoreData.guesses, ["PLANT"], "Previous guess must be restored");
+  assert.equal(restoreData.evaluations.length, 1);
+  assert.deepEqual(restoreData.evaluations[0], ["absent", "absent", "wrong-position", "wrong-position", "absent"]);
+
+  // Player can submit their next guess using the fresh gameToken
+  const nextGuessRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "puz-archive-A", guess: "HUMAN", gameToken: restoreData.gameToken })
+  }), env);
+  const nextGuessData = await nextGuessRes.json();
+  assert.equal(nextGuessData.ok, true);
+  assert.equal(nextGuessData.solved, true);
+});
+
+test("25: Future-compatible account and puzzle deletion lifetime isolation", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+
+  seedPuzzle(db, { puzzleId: "puz-life-1", date: "2026-10-10", answer: "CRANE" });
+  seedPuzzle(db, { puzzleId: "puz-life-2", date: "2026-10-11", answer: "STONE" });
+
+  const user1 = await createTestAccount(db, { emnifeedId: "EF-user1-del", gamerTag: "User1Del" });
+  const user2 = await createTestAccount(db, { emnifeedId: "EF-user2-del", gamerTag: "User2Del" });
+
+  // User 1 plays Puzzle 1 and Puzzle 2
+  await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-life-1", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${user1.sessionToken}` }
+  }), env);
+  await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-life-2", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${user1.sessionToken}` }
+  }), env);
+
+  // User 2 plays Puzzle 1
+  await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle?puzzleId=puz-life-1", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${user2.sessionToken}` }
+  }), env);
+
+  assert.equal(db.prepare("SELECT COUNT(*) as c FROM fivewink_plays").get().c, 3);
+
+  // Future Account Deletion simulation for User 1:
+  // Deleting User 1 removes their plays and sessions
+  const user1Sessions = db.prepare("SELECT session_id FROM fivewink_plays WHERE emnifeed_id = 'EF-user1-del'").all();
+  for (const row of user1Sessions) {
+    db.prepare("DELETE FROM fivewink_sessions WHERE session_id = ?").run(row.session_id);
+  }
+  db.prepare("DELETE FROM fivewink_plays WHERE emnifeed_id = 'EF-user1-del'").run();
+
+  // User 1 state is gone
+  assert.equal(db.prepare("SELECT COUNT(*) as c FROM fivewink_plays WHERE emnifeed_id = 'EF-user1-del'").get().c, 0);
+
+  // User 2 state remains completely intact
+  assert.equal(db.prepare("SELECT COUNT(*) as c FROM fivewink_plays WHERE emnifeed_id = 'EF-user2-del'").get().c, 1);
+  const user2Play = db.prepare("SELECT * FROM fivewink_plays WHERE emnifeed_id = 'EF-user2-del'").get();
+  assert.ok(db.prepare("SELECT * FROM fivewink_sessions WHERE session_id = ?").get(user2Play.session_id));
 });

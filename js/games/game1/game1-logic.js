@@ -202,3 +202,65 @@ export function buildPlayerHistoryRecord(state, puzzle) {
     seventhGuessUsed: state.seventhGuessUsed
   };
 }
+
+/**
+ * Restore game state for active resumed or read-only completed puzzles.
+ * Populates state.attempts, state.guesses, and state.feedback using authoritative evaluations.
+ */
+export function restoreGame1State(state, data) {
+  if (!state || !data) return { ok: false, message: "Invalid restoration payload." };
+
+  if (Array.isArray(data.attempts)) {
+    data.attempts.forEach((att, idx) => {
+      if (att && idx >= 0 && idx < GAME1_CONFIG.normalAttempts) {
+        state.attempts[idx] = att;
+      }
+    });
+  }
+
+  if (Array.isArray(data.guesses)) {
+    data.guesses.forEach((g, idx) => {
+      if (g && idx >= 0 && idx < GAME1_CONFIG.normalAttempts) {
+        const norm = normalizeGuess(g);
+        state.guesses[idx] = norm;
+        state.usedGuesses.add(norm);
+      }
+    });
+  }
+
+  if (Array.isArray(data.evaluations)) {
+    data.evaluations.forEach((evalItem, idx) => {
+      if (Array.isArray(evalItem) && evalItem.length === 5 && idx >= 0 && idx < GAME1_CONFIG.normalAttempts) {
+        state.feedback[idx] = evalItem;
+      }
+    });
+  }
+
+  if (Array.isArray(data.cluesState)) {
+    state.clues = data.cluesState.slice(0, GAME1_CONFIG.clueCount);
+  }
+
+  state.cluesUsed = Number(data.cluesUsed) || 0;
+
+  if (data.status) {
+    state.status = data.status;
+  }
+
+  if (data.result) {
+    state.result = data.result;
+  }
+
+  if (data.answer) {
+    state.answer = normalizeGuess(data.answer);
+  }
+
+  if (data.seventhGuess) {
+    state.guesses[GAME1_CONFIG.normalAttempts] = normalizeGuess(data.seventhGuess);
+    state.seventhGuessUsed = true;
+    if (data.seventhEvaluation && Array.isArray(data.seventhEvaluation)) {
+      state.feedback[GAME1_CONFIG.normalAttempts] = data.seventhEvaluation;
+    }
+  }
+
+  return { ok: true };
+}
