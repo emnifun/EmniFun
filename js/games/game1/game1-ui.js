@@ -36,8 +36,11 @@ export async function renderGame1(container) {
   try {
     puzzle = await getPublishedPuzzleForToday();
   } catch (error) {
+    const isAlreadyPlayed = error?.message?.toLowerCase().includes("already played");
     container.innerHTML =
-      '<div class="placeholder"><h2>FiveWink could not load</h2><p>' +
+      '<div class="placeholder"><h2>' +
+      (isAlreadyPlayed ? "Already Played" : "FiveWink could not load") +
+      '</h2><p>' +
       (error?.message || "Puzzle data could not be loaded.") +
       '</p></div>';
     return;
@@ -50,6 +53,25 @@ export async function renderGame1(container) {
   }
 
   const state = createGame1State();
+  if (puzzle.resumed && Array.isArray(puzzle.attempts) && Array.isArray(puzzle.guesses)) {
+    puzzle.attempts.forEach((att, idx) => {
+      if (att) {
+        state.attempts[idx] = att;
+        state.feedback[idx] = att;
+      }
+    });
+    puzzle.guesses.forEach((g, idx) => {
+      if (g) {
+        state.guesses[idx] = g;
+        state.usedGuesses.add(g);
+      }
+    });
+    if (Array.isArray(puzzle.cluesState)) {
+      state.clues = puzzle.cluesState;
+    }
+    state.cluesUsed = Number(puzzle.cluesUsed) || 0;
+    if (puzzle.status) state.status = puzzle.status;
+  }
   let currentInput = "";
   let gameToken = puzzle.gameToken;
   let requestInFlight = false;

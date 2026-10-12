@@ -1669,7 +1669,7 @@ export async function authenticateAdmin(request, env) {
   };
 }
 
-export { authConfig };
+export { authConfig, loadSession };
 
 export const __authInternals = Object.freeze({
   normalizeGamerTag,

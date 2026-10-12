@@ -32,6 +32,7 @@ async function requestJson(path, options = {}) {
   try {
     response = await fetch(FIVEWINK_API_BASE + path, {
       ...options,
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         ...(options.headers || {})
@@ -102,8 +103,9 @@ async function requestAuthJson(path, options = {}) {
   return data;
 }
 
-export async function getFiveWinkPuzzle() {
-  return requestJson("/puzzle");
+export async function getFiveWinkPuzzle(puzzleId = null) {
+  const query = puzzleId ? `?puzzleId=${encodeURIComponent(puzzleId)}` : "";
+  return requestJson(`/puzzle${query}`);
 }
 
 export async function submitFiveWinkGuess({

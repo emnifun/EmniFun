@@ -41,7 +41,13 @@ export async function getPublishedPuzzleForToday() {
       game: "game1",
       date: response.date,
       clues: response.clues,
-      gameToken: response.gameToken
+      gameToken: response.gameToken,
+      resumed: Boolean(response.resumed),
+      attempts: response.attempts || null,
+      guesses: response.guesses || null,
+      cluesState: response.cluesState || null,
+      cluesUsed: response.cluesUsed || 0,
+      status: response.status || null
     };
   } catch (error) {
     if (error instanceof PuzzleDataError) throw error;

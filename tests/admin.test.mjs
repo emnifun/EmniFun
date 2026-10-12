@@ -56,6 +56,7 @@ async function setupTestDb() {
   db.exec(await readFile(new URL("../worker/migrations/0001_auth.sql", import.meta.url), "utf8"));
   db.exec(await readFile(new URL("../worker/migrations/0002_auth_security_fixes.sql", import.meta.url), "utf8"));
   db.exec(await readFile(new URL("../worker/migrations/0003_admin.sql", import.meta.url), "utf8"));
+  db.exec(await readFile(new URL("../worker/migrations/0004_fivewink_plays.sql", import.meta.url), "utf8"));
   return db;
 }
 
@@ -221,6 +222,11 @@ test("admin can create a valid draft puzzle", async () => {
   assert.equal(createData.puzzle.status, "draft");
   assert.equal(createData.puzzle.clues.length, 5);
   assert.equal(createData.puzzle.clues[0], "First clue");
+  assert.match(
+    createData.puzzle.puzzleId,
+    /^FW-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    "Newly created puzzle ID must start with FW- followed by a valid UUID"
+  );
 });
 
 test("admin cannot create puzzle with invalid data or duplicate date", async () => {

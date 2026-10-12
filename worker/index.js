@@ -12,23 +12,29 @@ import {
   createGameToken,
   verifyGameToken
 } from "./token.js";
-import { handleAuthRequest, cleanupAuthData } from "./auth.js";
+import { handleAuthRequest, cleanupAuthData, loadSession as loadAuthSession } from "./auth.js";
 import { handleAdminRequest, autoPublishDailyPuzzle } from "./admin.js";
 import { loadValidWords } from "./vocab.js";
 
-function corsHeaders() {
+function corsHeaders(request = null, env = null) {
+  const origin = request?.headers?.get("Origin");
+  const configured = env?.AUTH_ALLOWED_ORIGIN || "https://emnifun.github.io";
+  const allowOrigin = (origin && (origin === configured || !env?.AUTH_ALLOWED_ORIGIN)) ? origin : configured;
+
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Vary": "Origin"
   };
 }
 
-function jsonResponse(data, status = 200, extraHeaders = {}) {
+function jsonResponse(data, status = 200, extraHeaders = {}, request = null, env = null) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
-      ...corsHeaders(),
+      ...corsHeaders(request, env),
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       ...extraHeaders
@@ -329,41 +335,212 @@ function updateAfterNormalGuess(session, guess, feedback, answer) {
   };
 }
 
-async function handlePuzzle(env) {
+async function handleExistingPlay(env, sessionId, puzzle, clues, request) {
+  const existingSession = await env.DB.prepare(
+    `SELECT session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json,
+            clues_used, status, result, seventh_guess, version, created_at, updated_at, expires_at
+       FROM fivewink_sessions
+      WHERE session_id = ?1
+      LIMIT 1`
+  )
+    .bind(sessionId)
+    .first();
+
+  const now = Math.floor(Date.now() / 1000);
+
+  // If session is still active and unexpired, resume the same session!
+  if (
+    existingSession &&
+    (existingSession.status === "playing" || existingSession.status === "awaiting-seventh") &&
+    existingSession.expires_at > now
+  ) {
+    const gameToken = await createSessionToken(
+      {
+        sessionId: existingSession.session_id,
+        puzzleId: existingSession.puzzle_id,
+        date: existingSession.date
+      },
+      env.GAME_TOKEN_SECRET
+    );
+
+    return jsonResponse(
+      {
+        ok: true,
+        resumed: true,
+        puzzleId: puzzle.puzzle_id,
+        date: puzzle.date,
+        length: 5,
+        clues,
+        gameToken,
+        attempts: JSON.parse(existingSession.attempts_json),
+        guesses: JSON.parse(existingSession.guesses_json),
+        cluesState: JSON.parse(existingSession.clues_json),
+        cluesUsed: existingSession.clues_used,
+        status: existingSession.status
+      },
+      200,
+      {},
+      request,
+      env
+    );
+  }
+
+  // If session is finished or expired/cleaned up, reject replay!
+  return jsonResponse(
+    {
+      ok: false,
+      alreadyPlayed: true,
+      message: "You have already played this FiveWink puzzle. Check back for the next puzzle!"
+    },
+    403,
+    {},
+    request,
+    env
+  );
+}
+
+async function handlePuzzle(request, env) {
   requireConfiguredEnvironment(env);
 
-  const puzzle = await getCurrentPublishedPuzzle(env);
+  const url = request ? new URL(request.url) : null;
+  const requestedPuzzleId = url?.searchParams?.get("puzzleId") || url?.searchParams?.get("puzzle_id");
+
+  const puzzle = requestedPuzzleId
+    ? await env.DB.prepare(
+        "SELECT puzzle_id, game, date, answer, clues_json, status FROM fivewink_puzzles WHERE game = 'game1' AND puzzle_id = ?1 AND status = 'published' LIMIT 1"
+      )
+        .bind(requestedPuzzleId)
+        .first()
+    : await getCurrentPublishedPuzzle(env);
 
   if (!puzzle) {
     return jsonResponse(
       {
         ok: false,
-        message: "There is no published FiveWink puzzle for today."
+        message: requestedPuzzleId
+          ? "The requested FiveWink puzzle is not published or does not exist."
+          : "There is no published FiveWink puzzle for today."
       },
-      404
+      404,
+      {},
+      request,
+      env
     );
   }
 
   const clues = validatePuzzleForPlay(puzzle);
-  const session = await createSession(env, puzzle);
 
+  // Authenticate session if present.
+  let authSession = null;
+  try {
+    if (request) {
+      authSession = await loadAuthSession(env, request);
+    }
+  } catch {
+    authSession = null;
+  }
+
+  // 1. GUEST USER (Unauthenticated):
+  // Unlimited plays. Zero anti-replay tracking, zero guest cookies, zero guest database records.
+  if (!authSession?.emnifeed_id) {
+    const session = await createSession(env, puzzle);
+    const gameToken = await createSessionToken(
+      {
+        sessionId: session.sessionId,
+        puzzleId: puzzle.puzzle_id,
+        date: puzzle.date
+      },
+      env.GAME_TOKEN_SECRET
+    );
+
+    return jsonResponse(
+      {
+        ok: true,
+        puzzleId: puzzle.puzzle_id,
+        date: puzzle.date,
+        length: 5,
+        clues,
+        gameToken
+      },
+      200,
+      {},
+      request,
+      env
+    );
+  }
+
+  // 2. AUTHENTICATED USER (Logged In):
+  // Enforce ONE play per puzzle: (emnifeed_id, puzzle_id).
+  const emnifeedId = authSession.emnifeed_id;
+  const now = Math.floor(Date.now() / 1000);
+
+  // Check if this account already has a play record for this puzzle.
+  const existingPlay = await env.DB.prepare(
+    "SELECT session_id, created_at FROM fivewink_plays WHERE emnifeed_id = ?1 AND puzzle_id = ?2 LIMIT 1"
+  )
+    .bind(emnifeedId, puzzle.puzzle_id)
+    .first();
+
+  if (existingPlay) {
+    return handleExistingPlay(env, existingPlay.session_id, puzzle, clues, request);
+  }
+
+  // First play for this puzzle by this account.
+  // Create a new session in fivewink_sessions:
+  const newSession = await createSession(env, puzzle);
+
+  // Atomically record the play in fivewink_plays.
+  // Uses PRIMARY KEY (emnifeed_id, puzzle_id) to protect against concurrent duplicate requests.
+  try {
+    await env.DB.prepare(
+      `INSERT INTO fivewink_plays (emnifeed_id, puzzle_id, session_id, created_at)
+       VALUES (?1, ?2, ?3, ?4)`
+    )
+      .bind(emnifeedId, puzzle.puzzle_id, newSession.sessionId, now)
+      .run();
+  } catch (error) {
+    // If concurrent request won the race, fetch the winning play and handle it
+    const concurrentPlay = await env.DB.prepare(
+      "SELECT session_id FROM fivewink_plays WHERE emnifeed_id = ?1 AND puzzle_id = ?2 LIMIT 1"
+    )
+      .bind(emnifeedId, puzzle.puzzle_id)
+      .first();
+
+    if (concurrentPlay) {
+      // Clean up the losing session
+      await env.DB.prepare("DELETE FROM fivewink_sessions WHERE session_id = ?1")
+        .bind(newSession.sessionId)
+        .run();
+
+      return handleExistingPlay(env, concurrentPlay.session_id, puzzle, clues, request);
+    }
+    throw error;
+  }
+
+  // Issue game token for new session
   const gameToken = await createSessionToken(
     {
-      sessionId: session.sessionId,
+      sessionId: newSession.sessionId,
       puzzleId: puzzle.puzzle_id,
       date: puzzle.date
     },
     env.GAME_TOKEN_SECRET
   );
 
-  return jsonResponse({
-    ok: true,
-    puzzleId: puzzle.puzzle_id,
-    date: puzzle.date,
-    length: 5,
-    clues,
-    gameToken
-  });
+  return jsonResponse(
+    {
+      ok: true,
+      puzzleId: puzzle.puzzle_id,
+      date: puzzle.date,
+      length: 5,
+      clues,
+      gameToken
+    },
+    200,
+    {},
+    request,
+    env
+  );
 }
 
 async function handleGuess(request, env) {
@@ -674,16 +851,16 @@ async function handleRequest(request, env) {
   if (request.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
-      headers: corsHeaders()
+      headers: corsHeaders(request, env)
     });
   }
 
   if (request.method === "GET" && path === "/api/health") {
-    return jsonResponse({ ok: true, service: "emnifun" });
+    return jsonResponse({ ok: true, service: "emnifun" }, 200, {}, request, env);
   }
 
   if (request.method === "GET" && path === "/api/fivewink/puzzle") {
-    return handlePuzzle(env);
+    return handlePuzzle(request, env);
   }
 
   if (request.method === "POST" && path === "/api/fivewink/guess") {
@@ -698,7 +875,23 @@ async function handleRequest(request, env) {
     return handleSkip(request, env);
   }
 
-  return jsonResponse({ ok: false, message: "Not found." }, 404);
+  return jsonResponse({ ok: false, message: "Not found." }, 404, {}, request, env);
+}
+
+export async function cleanupFiveWinkSessions(env) {
+  if (!env?.DB) return;
+
+  const now = Math.floor(Date.now() / 1000);
+  const FINISHED_SESSION_RETENTION_SECONDS = 86400;
+  const finishedCutoff = now - FINISHED_SESSION_RETENTION_SECONDS;
+
+  return env.DB.prepare(
+    `DELETE FROM fivewink_sessions
+      WHERE expires_at <= ?1
+         OR (status = 'finished' AND updated_at <= ?2)`
+  )
+    .bind(now, finishedCutoff)
+    .run();
 }
 
 export default {
@@ -716,7 +909,10 @@ export default {
               ? "FiveWink backend error. Please try again."
               : error.message
         },
-        status
+        status,
+        {},
+        request,
+        env
       );
     }
   },
@@ -725,6 +921,13 @@ export default {
       await cleanupAuthData(env);
     } catch (error) {
       console.error("EmniFun auth cleanup failed", error);
+      controller.noRetry?.();
+    }
+
+    try {
+      await cleanupFiveWinkSessions(env);
+    } catch (error) {
+      console.error("FiveWink session cleanup failed", error);
       controller.noRetry?.();
     }
 

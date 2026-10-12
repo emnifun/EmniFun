@@ -331,7 +331,7 @@ export async function handleAdminRequest(request, env) {
         );
       }
 
-      const puzzleId = crypto.randomUUID();
+      const puzzleId = `FW-${crypto.randomUUID()}`;
       const now = Math.floor(Date.now() / 1000);
 
       await env.DB.prepare(
@@ -571,6 +571,16 @@ export async function handleAdminRequest(request, env) {
 
       // DELETE / POST delete permanent deletion
       if ((action === "delete" && request.method === "POST") || (!action && request.method === "DELETE")) {
+        try {
+          await env.DB.prepare(
+            "DELETE FROM fivewink_plays WHERE puzzle_id = ?1"
+          )
+            .bind(puzzleId)
+            .run();
+        } catch {
+          // In case table is not present in legacy environments
+        }
+
         await env.DB.prepare(
           "DELETE FROM fivewink_sessions WHERE puzzle_id = ?1"
         )
