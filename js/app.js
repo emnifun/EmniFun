@@ -49,6 +49,27 @@ export const ROUTES = new Set([
   ...ACCOUNT_ROUTES,
   ...INFO_ROUTES
 ]);
+export const RULES_GUIDE_HASHES = new Set([
+  "standard",
+  "fivewink-standard",
+  "strict",
+  "fivewink-strict",
+  "mindbender",
+  "fivewink-mindbender",
+  "expert",
+  "fivewink-expert",
+  "faq",
+  "fivewink-faq",
+  "guide-faq",
+  "rules-faq",
+  "guide",
+  "fivewink",
+  "guide-fivewink",
+  "game2",
+  "guide-game2",
+  "game3",
+  "guide-game3"
+]);
 
 export function getPublicSiteRoot() {
   if (typeof window === "undefined" || !window.location) return "/";
@@ -105,6 +126,7 @@ export function normalizeRoute(route) {
   const lower = route.toLowerCase().trim();
   if (lower === "games/game1") return "games/fivewink";
   if (lower === "privacy-policy" || lower === "privacy policy") return "privacy";
+  if (RULES_GUIDE_HASHES.has(lower)) return "rules";
   if (ROUTES.has(lower)) return lower;
   if (lower.startsWith("games/")) return lower;
   return DEFAULT_ROUTE;
@@ -173,6 +195,7 @@ export function getCurrentRoute() {
     if (rawHash === "games/game2") return "games/game2";
     if (rawHash === "games/game3") return "games/game3";
     if (rawHash === "privacy-policy") return "privacy";
+    if (RULES_GUIDE_HASHES.has(rawHash)) return "rules";
     if (ROUTES.has(rawHash)) return rawHash;
   }
 
@@ -334,7 +357,134 @@ export function renderRoute(route) {
     renderAccountPage(accountContent, currentRoute);
   }
 
+  if (viewId === "rules") {
+    initRulesGuide();
+  }
+
   syncFooter();
+}
+
+export function initRulesGuide() {
+  if (typeof document === "undefined") return;
+  const rulesView = document.querySelector("#rules");
+  if (!rulesView) return;
+
+  const tabButtons = rulesView.querySelectorAll("[data-guide-tab]");
+  const panes = rulesView.querySelectorAll(".guide-pane");
+  const fivewinkDetails = rulesView.querySelector("#guide-fivewink");
+  const game2Details = rulesView.querySelector("#guide-game2");
+  const game3Details = rulesView.querySelector("#guide-game3");
+
+  function switchTab(tabId, updateHash = true) {
+    tabButtons.forEach((btn) => {
+      const isSelected = btn.dataset.guideTab === tabId;
+      btn.classList.toggle("active", isSelected);
+      btn.setAttribute("aria-selected", isSelected ? "true" : "false");
+      btn.setAttribute("tabindex", isSelected ? "0" : "-1");
+    });
+
+    panes.forEach((pane) => {
+      const isPane = pane.dataset.pane === tabId;
+      pane.classList.toggle("active", isPane);
+      if (isPane) {
+        pane.removeAttribute("hidden");
+      } else {
+        pane.setAttribute("hidden", "true");
+      }
+    });
+
+    if (fivewinkDetails && !fivewinkDetails.open) {
+      fivewinkDetails.open = true;
+    }
+
+    if (updateHash && typeof window !== "undefined" && window.history?.replaceState) {
+      const currentUrl = new URL(window.location.href);
+      currentUrl.hash = tabId;
+      window.history.replaceState({ route: "rules", tab: tabId }, "", currentUrl.toString());
+    }
+  }
+
+  tabButtons.forEach((btn) => {
+    if (btn.dataset.bound === "true") return;
+    btn.dataset.bound = "true";
+
+    btn.addEventListener("click", () => {
+      switchTab(btn.dataset.guideTab);
+    });
+
+    btn.addEventListener("keydown", (e) => {
+      const buttons = [...tabButtons];
+      const index = buttons.indexOf(btn);
+      let targetIndex = -1;
+
+      if (e.key === "ArrowRight") {
+        targetIndex = (index + 1) % buttons.length;
+      } else if (e.key === "ArrowLeft") {
+        targetIndex = (index - 1 + buttons.length) % buttons.length;
+      } else if (e.key === "Home") {
+        targetIndex = 0;
+      } else if (e.key === "End") {
+        targetIndex = buttons.length - 1;
+      }
+
+      if (targetIndex !== -1) {
+        e.preventDefault();
+        buttons[targetIndex].focus();
+        buttons[targetIndex].click();
+      }
+    });
+  });
+
+  function handleHash() {
+    if (typeof window === "undefined" || !window.location.hash) return;
+    const rawHash = window.location.hash.replace(/^#/, "").toLowerCase().trim();
+    if (!rawHash) return;
+
+    if (rawHash === "fivewink" || rawHash === "guide-fivewink") {
+      if (fivewinkDetails) fivewinkDetails.open = true;
+      fivewinkDetails?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    if (rawHash === "game2" || rawHash === "guide-game2") {
+      if (game2Details) game2Details.open = true;
+      game2Details?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    if (rawHash === "game3" || rawHash === "guide-game3") {
+      if (game3Details) game3Details.open = true;
+      game3Details?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    const tabMap = {
+      standard: "standard",
+      "fivewink-standard": "standard",
+      strict: "strict",
+      "fivewink-strict": "strict",
+      mindbender: "mindbender",
+      "fivewink-mindbender": "mindbender",
+      expert: "expert",
+      "fivewink-expert": "expert",
+      faq: "faq",
+      "fivewink-faq": "faq",
+      "guide-faq": "faq",
+      "rules-faq": "faq",
+      guide: "faq"
+    };
+
+    const targetTab = tabMap[rawHash];
+    if (targetTab) {
+      switchTab(targetTab, false);
+      const targetElement = rulesView.querySelector(`[data-pane="${targetTab}"]`);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+  }
+
+  handleHash();
 }
 
 export function renderGames() {

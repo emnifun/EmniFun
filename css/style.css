@@ -4,10 +4,10 @@
 *{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;min-width:320px;background:#f7f8fc} button,a{font:inherit} a{color:inherit}
 .site-header{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.96);border-bottom:1px solid #e5e7eb}
 .navbar{position:relative;max-width:1100px;margin:0 auto;min-height:64px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:20px}
-.navbar-brand-group{display:flex;align-items:center;gap:8px}.brand{font-weight:800;font-size:1.25rem;text-decoration:none}.mobile-menu-toggle{display:none;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0;border-radius:9px;background:transparent;color:#374151;cursor:pointer;font-size:1.45rem;line-height:1}.mobile-menu-toggle:hover{background:#f3f4f6}.mobile-menu-toggle:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}.nav-links{display:flex;flex-wrap:wrap;gap:6px}.nav-link{border:0;background:transparent;color:#4b5563;padding:8px 10px;border-radius:8px;cursor:pointer}.nav-link:hover,.nav-link.active{background:#eef2ff;color:#3730a3}
+.navbar-brand-group{display:flex;align-items:center;gap:8px}.brand{font-weight:800;font-size:1.25rem;text-decoration:none}.mobile-menu-toggle{display:none;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0;border-radius:9px;background:transparent;color:#374151;cursor:pointer;font-size:1.45rem;line-height:1}.mobile-menu-toggle:hover{background:#f3f4f6}.mobile-menu-toggle:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}.nav-links{display:flex;flex-wrap:wrap;gap:6px}.nav-link{border:0;background:transparent;color:#4b5563;padding:8px 10px;border-radius:8px;cursor:pointer}.nav-link:hover,.nav-link.active{background:#eef2ff;color:#3730a3}.nav-link:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
 main{max-width:1100px;margin:0 auto;padding:32px 20px 56px}.view{display:none}.view.active{display:block}.hero{padding:48px 0 32px}.hero h1{margin:0 0 12px;font-size:clamp(2rem,6vw,3.5rem);line-height:1.05}.hero p{max-width:650px;color:#6b7280;font-size:1.05rem}
 .section-heading{margin-bottom:22px}.section-heading h2{margin:0 0 6px}.section-heading p{margin:0;color:#6b7280}.card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:22px;box-shadow:0 3px 12px rgba(15,23,42,.04)}.card h3{margin-top:0}.card p{color:#6b7280}
-.button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;padding:10px 16px;background:#4f46e5;color:#fff;text-decoration:none;cursor:pointer;font-weight:650}.button:hover{background:#4338ca}.button.secondary{background:#eef2ff;color:#3730a3}
+.button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;padding:10px 16px;background:#4f46e5;color:#fff;text-decoration:none;cursor:pointer;font-weight:650}.button:hover{background:#4338ca}.button.secondary{background:#eef2ff;color:#3730a3}.button:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
 .placeholder{text-align:center;padding:48px 24px;border:1px dashed #cbd5e1;border-radius:14px;background:#fff}.placeholder p{color:#6b7280}
 .stats-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.stat{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px}.stat strong{display:block;font-size:1.6rem;margin-top:4px}.stat span{color:#6b7280;font-size:.9rem}
 .site-footer{border-top:1px solid #e5e7eb;background:#fff}
@@ -75,3 +75,60 @@ main{max-width:1100px;margin:0 auto;padding:32px 20px 56px}.view{display:none}.v
 .mode-pref-label input{cursor:pointer;width:18px;height:18px}
 .clue-box.disabled-mode{background:#f8fafc;border-color:#e2e8f0;color:#64748b}
 .result-mode-tag{font-size:.9rem;color:#64748b;margin:4px 0 10px}
+
+/* Rules & Game Guide Hub */
+.guide-header-title{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.guide-badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#e0e7ff;color:#3730a3;font-size:.82rem;font-weight:700}
+.guide-intro-card{margin-bottom:24px}
+.guide-note{color:#6b7280;font-size:.92rem;margin-top:12px;border-top:1px solid #e5e7eb;padding-top:10px}
+.guide-games-list{display:flex;flex-direction:column;gap:18px;margin-bottom:32px}
+.guide-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 3px 12px rgba(15,23,42,.04);overflow:hidden;transition:border-color .15s ease}
+.guide-card[open]{border-color:#cbd5e1}
+.guide-card-summary{list-style:none;cursor:pointer;padding:20px 22px;user-select:none;transition:background .15s ease}
+.guide-card-summary::-webkit-details-marker{display:none}
+.guide-card-summary:hover{background:#f8fafc}
+.guide-card-summary:focus-visible{outline:2px solid #4f46e5;outline-offset:-2px}
+.guide-card-header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.guide-card-title-group{display:flex;align-items:center;gap:14px}
+.guide-card-icon{font-size:1.6rem;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:10px;background:#f1f5f9;flex-shrink:0}
+.guide-card-title{margin:0;font-size:1.25rem;font-weight:750;color:#1e293b}
+.guide-card-desc{margin:2px 0 0;color:#64748b;font-size:.92rem}
+.guide-card-meta{display:flex;align-items:center;gap:10px}
+.guide-expand-indicator{font-size:1.1rem;color:#94a3b8;transition:transform .2s ease;display:inline-block}
+.guide-card[open] .guide-expand-indicator{transform:rotate(180deg)}
+.guide-card-content{padding:0 22px 22px;border-top:1px solid #f1f5f9}
+.guide-submenu{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 22px;padding:6px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0}
+.guide-submenu-item{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;min-height:44px;border:1px solid transparent;border-radius:8px;background:transparent;color:#475569;font-weight:650;font-size:.88rem;cursor:pointer;transition:all .15s ease}
+.guide-submenu-item:hover{background:#fff;color:#1e293b;border-color:#cbd5e1}
+.guide-submenu-item:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
+.guide-submenu-item.active{background:#fff;color:#3730a3;border-color:#c7d2fe;box-shadow:0 2px 6px rgba(79,70,229,.08)}
+.guide-submenu-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#e2e8f0;color:#475569;font-size:.75rem;font-weight:700}
+.guide-submenu-item.active .guide-submenu-num{background:#4f46e5;color:#fff}
+.guide-pane{display:none}
+.guide-pane.active{display:block}
+.guide-pane:focus{outline:none}
+.guide-pane:focus-visible{outline:2px solid #4f46e5;outline-offset:2px;border-radius:12px}
+.guide-section-block{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px}
+.guide-section-block h3{margin-top:0;margin-bottom:8px;font-size:1.15rem;color:#1e293b;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.guide-section-block p{color:#475569;font-size:.95rem;line-height:1.6;margin:0 0 10px}
+.guide-section-block p:last-child{margin-bottom:0}
+.guide-example-row{display:flex;gap:8px;align-items:center;margin:12px 0 16px;flex-wrap:wrap}
+.guide-example-label{font-size:.88rem;font-weight:600;color:#334155;margin-left:8px}
+.guide-rules-list{margin:10px 0 14px;padding-left:20px;color:#475569;font-size:.95rem;line-height:1.6}
+.guide-rules-list li{margin-bottom:8px}
+.guide-faq-item{border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;background:#fff;margin-bottom:10px;transition:border-color .15s ease}
+.guide-faq-item summary{font-weight:700;color:#1e293b;cursor:pointer;display:flex;justify-content:space-between;align-items:center;min-height:44px;user-select:none}
+.guide-faq-item summary::-webkit-details-marker{display:none}
+.guide-faq-item summary:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
+.guide-faq-item[open]{border-color:#cbd5e1}
+.guide-faq-item p{margin:10px 0 0;color:#475569;font-size:.93rem;line-height:1.6}
+.badge-verified{display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-size:.72rem;font-weight:700;letter-spacing:.04em}
+.badge-unconfirmed{display:inline-block;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:.72rem;font-weight:700;letter-spacing:.04em}
+.guide-coming-soon-box{text-align:center;padding:36px 20px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;margin:12px 0}
+.guide-coming-soon-box h3{margin:10px 0 6px;font-size:1.15rem;color:#1e293b}
+.guide-coming-soon-box p{color:#64748b;font-size:.95rem;max-width:520px;margin:0 auto 8px}
+.guide-coming-soon-icon{font-size:2rem}
+.mode-pill-strict{background:#ffedd5;color:#9a3412}
+.mode-pill-info{background:#e0f2fe;color:#0369a1}
+@media(max-width:800px){.guide-card-header{flex-direction:column;align-items:flex-start}.guide-card-meta{width:100%;display:flex;justify-content:space-between;align-items:center;margin-top:4px}.guide-submenu{flex-direction:column}.guide-submenu-item{width:100%}.guide-submenu-item>span:nth-child(2){flex:1;text-align:left}}
+@media(max-width:520px){.guide-card-summary{padding:16px 14px}.guide-card-content{padding:0 14px 16px}.guide-section-block{padding:14px}}
