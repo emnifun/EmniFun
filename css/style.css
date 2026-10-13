@@ -75,10 +75,3 @@ main{max-width:1100px;margin:0 auto;padding:32px 20px 56px}.view{display:none}.v
 .mode-pref-label input{cursor:pointer;width:18px;height:18px}
 .clue-box.disabled-mode{background:#f8fafc;border-color:#e2e8f0;color:#64748b}
 .result-mode-tag{font-size:.9rem;color:#64748b;margin:4px 0 10px}
-
-/* Keep the mobile footer links on one line, including when a link is active. */
-@media(max-width:520px){
-  .footer-nav{flex-wrap:nowrap;gap:2px 4px;white-space:nowrap}
-  .footer-link{flex-shrink:0;white-space:nowrap;padding-inline:3px;font-size:.82rem}
-  .footer-sep{flex-shrink:0;font-size:.75rem}
-}
