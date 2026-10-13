@@ -13,7 +13,6 @@ import {
 
 const views = typeof document !== "undefined" ? [...document.querySelectorAll(".view")] : [];
 const navLinks = typeof document !== "undefined" ? [...document.querySelectorAll(".nav-link")] : [];
-const viewLinks = typeof document !== "undefined" ? [...document.querySelectorAll("[data-view]")] : [];
 const gamesView = typeof document !== "undefined" ? document.querySelector("#games") : null;
 const gameArea = typeof document !== "undefined" ? document.querySelector("#game-area") : null;
 const accountContent = typeof document !== "undefined" ? document.querySelector("#account-content") : null;
@@ -37,21 +36,25 @@ export const GAME_ROUTES = new Set([
   "games/game3"
 ]);
 export const ACCOUNT_ROUTES = new Set(["account", "account/vault"]);
+export const INFO_ROUTES = new Set([
+  "about",
+  "rules",
+  "privacy",
+  "privacy-policy",
+  "contact"
+]);
 export const ROUTES = new Set([
   ...PRIMARY_ROUTES,
   ...GAME_ROUTES,
-  ...ACCOUNT_ROUTES
+  ...ACCOUNT_ROUTES,
+  ...INFO_ROUTES
 ]);
 
 export function getPublicSiteRoot() {
   if (typeof window === "undefined" || !window.location) return "/";
-  const gamesMatch = window.location.pathname.match(/^(.*\/)games(?:\/.*)?$/i);
-  if (gamesMatch) {
-    return gamesMatch[1];
-  }
-  const adminMatch = window.location.pathname.match(/^(.*\/)admin(?:\/.*)?$/i);
-  if (adminMatch) {
-    return adminMatch[1];
+  const sectionMatch = window.location.pathname.match(/^(.*\/)(?:games|admin|about|rules|privacy|privacy-policy|contact)(?:\/.*)?$/i);
+  if (sectionMatch) {
+    return sectionMatch[1];
   }
   const pathname = window.location.pathname;
   const lastSlashIndex = pathname.lastIndexOf("/");
@@ -81,10 +84,27 @@ export function getGameUrl(name) {
   return base + name + "/";
 }
 
+export function getAboutUrl() {
+  return getPublicSiteRoot() + "about/";
+}
+
+export function getRulesUrl() {
+  return getPublicSiteRoot() + "rules/";
+}
+
+export function getPrivacyUrl() {
+  return getPublicSiteRoot() + "privacy/";
+}
+
+export function getContactUrl() {
+  return getPublicSiteRoot() + "contact/";
+}
+
 export function normalizeRoute(route) {
   if (!route) return DEFAULT_ROUTE;
-  const lower = route.toLowerCase();
+  const lower = route.toLowerCase().trim();
   if (lower === "games/game1") return "games/fivewink";
+  if (lower === "privacy-policy" || lower === "privacy policy") return "privacy";
   if (ROUTES.has(lower)) return lower;
   if (lower.startsWith("games/")) return lower;
   return DEFAULT_ROUTE;
@@ -101,6 +121,18 @@ export function getRouteUrl(route) {
   if (current.startsWith("games/")) {
     const gameName = current.slice("games/".length);
     return getGameUrl(gameName);
+  }
+  if (current === "about") {
+    return getAboutUrl();
+  }
+  if (current === "rules") {
+    return getRulesUrl();
+  }
+  if (current === "privacy") {
+    return getPrivacyUrl();
+  }
+  if (current === "contact") {
+    return getContactUrl();
   }
   return getPublicSiteRoot() + "#" + current;
 }
@@ -128,12 +160,19 @@ export function getCurrentRoute() {
     return "games/" + sub;
   }
 
+  const infoMatch = pathname.match(/^(?:.*\/)?(about|rules|privacy|privacy-policy|contact)(?:\/.*)?$/i);
+  if (infoMatch) {
+    const raw = infoMatch[1].toLowerCase();
+    return raw === "privacy-policy" ? "privacy" : raw;
+  }
+
   const rawHash = window.location.hash.replace(/^#/, "").trim().toLowerCase();
   if (rawHash) {
     if (rawHash === "games") return "games";
     if (rawHash === "games/game1" || rawHash === "games/fivewink") return "games/fivewink";
     if (rawHash === "games/game2") return "games/game2";
     if (rawHash === "games/game3") return "games/game3";
+    if (rawHash === "privacy-policy") return "privacy";
     if (ROUTES.has(rawHash)) return rawHash;
   }
 
@@ -239,7 +278,15 @@ export function renderRoute(route) {
               ? "Recovery Vault — EmniFun"
               : currentRoute === "account"
                 ? "Account — EmniFun"
-                : "EmniFun";
+                : currentRoute === "about"
+                  ? "About — EmniFun"
+                  : currentRoute === "rules"
+                    ? "Rules — EmniFun"
+                    : currentRoute === "privacy"
+                      ? "Privacy Policy — EmniFun"
+                      : currentRoute === "contact"
+                        ? "Contact — EmniFun"
+                        : "EmniFun";
 
   views.forEach((view) => {
     view.classList.toggle("active", view.id === viewId);
@@ -286,6 +333,8 @@ export function renderRoute(route) {
   if (viewId === "account" && accountContent) {
     renderAccountPage(accountContent, currentRoute);
   }
+
+  syncFooter();
 }
 
 export function renderGames() {
@@ -354,11 +403,13 @@ function setupNavigation() {
     }
   });
 
-  viewLinks.forEach((link) => {
-    link.addEventListener("click", (event) => {
+  document.addEventListener("click", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    const link = event.target.closest("[data-view]");
+    if (link && !event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
       event.preventDefault();
       navigateTo(link.dataset.view);
-    });
+    }
   });
 
   document.querySelectorAll("[data-go-games]").forEach((button) => {
@@ -382,6 +433,50 @@ function setupNavigation() {
   window.addEventListener("emnifun-auth-changed", () => {
     syncAuthNavigation();
     renderRoute(getCurrentRoute());
+  });
+}
+
+export function getFooterHtml(siteRoot = getPublicSiteRoot()) {
+  const root = siteRoot.endsWith("/") ? siteRoot : siteRoot + "/";
+  return (
+    '<div class="footer-inner">' +
+      '<div class="footer-brand">' +
+        '<strong>EmniFun</strong> · FiveWink functional prototype' +
+      '</div>' +
+      '<nav class="footer-nav" aria-label="Footer navigation">' +
+        '<a class="footer-link" href="' + root + 'about/" data-view="about">About</a>' +
+        '<span class="footer-sep" aria-hidden="true">·</span>' +
+        '<a class="footer-link" href="' + root + 'rules/" data-view="rules">Rules</a>' +
+        '<span class="footer-sep" aria-hidden="true">·</span>' +
+        '<a class="footer-link" href="' + root + 'privacy/" data-view="privacy">Privacy Policy</a>' +
+        '<span class="footer-sep" aria-hidden="true">·</span>' +
+        '<a class="footer-link" href="' + root + 'contact/" data-view="contact">Contact</a>' +
+      '</nav>' +
+    '</div>'
+  );
+}
+
+export function syncFooter() {
+  if (typeof document === "undefined") return;
+  const footer = document.querySelector(".site-footer");
+  if (!footer) return;
+  const root = getPublicSiteRoot();
+  const currentRoute = getCurrentRoute();
+  const nav = footer.querySelector(".footer-nav");
+  if (!nav) {
+    footer.innerHTML = getFooterHtml(root);
+  }
+  const links = footer.querySelectorAll(".footer-link");
+  links.forEach((link) => {
+    const view = link.dataset.view;
+    if (view) {
+      link.href = getRouteUrl(view);
+      if (currentRoute === view) {
+        link.setAttribute("aria-current", "page");
+      } else {
+        link.removeAttribute("aria-current");
+      }
+    }
   });
 }
 
