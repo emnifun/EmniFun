@@ -2,6 +2,9 @@ import { GAME1_ID } from "./game1-data.js";
 import {
   GAME1_CONFIG,
   GAME1_RESULT,
+  FIVEWINK_MODES,
+  ALLOWED_GAMEPLAY_MODES,
+  checkHardMode1Constraints,
   buildPlayerHistoryRecord,
   createGame1State,
   getNextNormalAttemptIndex,
@@ -19,11 +22,66 @@ import {
 import {
   submitFiveWinkGuess,
   useFiveWinkClue,
-  skipFiveWinkSeventh
+  skipFiveWinkSeventh,
+  setFiveWinkMode
 } from "../../services/api.js";
 import { recordGameResult } from "../../statistics/statistics.js";
 import { saveGameResult } from "../../services/api.js";
 import { playFiveWinkSound } from "./game1-sound.js";
+
+export const MODE_INFO = Object.freeze({
+  default: {
+    id: "default",
+    name: "Standard",
+    description: "Classic FiveWink. Clues are available after attempts, and you are free to test any five-letter words on future guesses.",
+    available: true
+  },
+  hard1: {
+    id: "hard1",
+    name: "Hard Mode: Strict",
+    description: "Strict mode. Blue letters must remain in their confirmed positions. Orange letters must be included in future guesses and cannot be placed where they were already orange. Clues are completely disabled.",
+    available: true
+  },
+  hard2: {
+    id: "hard2",
+    name: "Hard Mode: Mindbender",
+    description: "Coming Soon. An upcoming challenge mode with mind-bending deduction rules.",
+    available: false
+  },
+  hard3: {
+    id: "hard3",
+    name: "Hard Mode: Expert",
+    description: "Coming Soon. An upcoming master-tier mode for seasoned puzzle solvers.",
+    available: false
+  }
+});
+
+const PREF_KEY_ENABLED = "emnifun_fivewink_mode_default_enabled";
+const PREF_KEY_MODE = "emnifun_fivewink_mode_preference";
+
+export function getLocalModePreference() {
+  try {
+    const enabled = localStorage.getItem(PREF_KEY_ENABLED) === "true";
+    const mode = localStorage.getItem(PREF_KEY_MODE);
+    if (enabled && (mode === "default" || mode === "hard1")) {
+      return { enabled: true, mode };
+    }
+    return { enabled: false, mode: "default" };
+  } catch {
+    return { enabled: false, mode: "default" };
+  }
+}
+
+export function saveLocalModePreference(enabled, mode) {
+  try {
+    localStorage.setItem(PREF_KEY_ENABLED, enabled ? "true" : "false");
+    if (enabled && (mode === "default" || mode === "hard1")) {
+      localStorage.setItem(PREF_KEY_MODE, mode);
+    }
+  } catch {
+    // Ignore storage issues in private modes
+  }
+}
 
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -55,7 +113,9 @@ export async function renderGame1(container) {
         cluesUsed: error.completedData.cluesUsed,
         seventhGuess: error.completedData.seventhGuess,
         seventhEvaluation: error.completedData.seventhEvaluation,
-        status: "finished"
+        status: "finished",
+        mode: error.completedData.mode || "default",
+        modeLocked: true
       };
       container.innerHTML = `
         <div class="placeholder">
@@ -117,8 +177,18 @@ export async function renderGame1(container) {
 
 function renderGame1Shell(container, puzzle) {
   const state = createGame1State();
-  if (puzzle.resumed || puzzle.completed) {
+  if (puzzle.resumed || puzzle.completed || puzzle.modeLocked) {
     restoreGame1State(state, puzzle);
+  } else {
+    const pref = getLocalModePreference();
+    if (pref.enabled && (pref.mode === "default" || pref.mode === "hard1")) {
+      state.mode = pref.mode;
+      if (puzzle.gameToken && state.mode !== (puzzle.mode || "default")) {
+        setFiveWinkMode({ puzzleId: puzzle.id, mode: state.mode, gameToken: puzzle.gameToken }).catch(() => {});
+      }
+    } else if (puzzle.mode) {
+      state.mode = puzzle.mode;
+    }
   }
   let currentInput = "";
   let gameToken = puzzle.gameToken;
@@ -129,10 +199,40 @@ function renderGame1Shell(container, puzzle) {
       <div class="game-header">
         <div>
           <p class="eyebrow">Daily Puzzle · ${puzzle.date}</p>
-          <h2>FiveWink</h2>
+          <div class="game-title-row">
+            <h2>FiveWink</h2>
+            <button class="mode-bulb-btn${state.mode === "hard1" ? " mode-strict" : ""}" id="game1-mode-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Game mode selector">
+              <svg class="mode-bulb-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 18h6"></path>
+                <path d="M10 22h4"></path>
+                <path d="M12 2a7 7 0 0 0-7 7c0 2.5 1.5 4.5 3 6h8c1.5-1.5 3-3.5 3-6a7 7 0 0 0-7-7z"></path>
+              </svg>
+              <span id="game1-mode-btn-label">${MODE_INFO[state.mode]?.name || "Standard"}</span>
+            </button>
+          </div>
           <p>Wink your way to the word.</p>
         </div>
         <button class="button secondary" type="button" id="game1-back">Back to Games</button>
+      </div>
+      <div id="game1-mode-modal-backdrop" class="mode-modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="mode-modal-title">
+        <div class="mode-modal">
+          <div class="mode-modal-header">
+            <h3 id="mode-modal-title">Game Mode</h3>
+            <button class="mode-modal-close" id="game1-mode-modal-close" type="button" aria-label="Close dialog">&times;</button>
+          </div>
+          <div class="mode-modal-body">
+            <div id="game1-mode-locked-banner" class="mode-locked-banner hidden">
+              The mode for this puzzle is locked and cannot be changed.
+            </div>
+            <div class="mode-options-list" id="game1-mode-options-list"></div>
+            <div class="mode-pref-row">
+              <label class="mode-pref-label">
+                <input type="checkbox" id="game1-mode-pref-checkbox" />
+                <span>Use this mode by default for future puzzles</span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="game1-layout">
         <div class="game1-play-area">
@@ -160,6 +260,13 @@ function renderGame1Shell(container, puzzle) {
   const messageBox = container.querySelector("#game1-message");
   const resultBox = container.querySelector("#game1-result");
   const seeWhyButton = container.querySelector("#game1-see-why");
+  const modeBtn = container.querySelector("#game1-mode-btn");
+  const modeBtnLabel = container.querySelector("#game1-mode-btn-label");
+  const modeModalBackdrop = container.querySelector("#game1-mode-modal-backdrop");
+  const modeModalClose = container.querySelector("#game1-mode-modal-close");
+  const modeLockedBanner = container.querySelector("#game1-mode-locked-banner");
+  const modeOptionsList = container.querySelector("#game1-mode-options-list");
+  const modePrefCheckbox = container.querySelector("#game1-mode-pref-checkbox");
   let messageTimeout = null;
 
   function syncCluePanelForViewport() {
@@ -193,6 +300,151 @@ function renderGame1Shell(container, puzzle) {
     root.focus({ preventScroll: true });
   }
 
+  function syncModeControls() {
+    if (modeBtnLabel) {
+      modeBtnLabel.textContent = MODE_INFO[state.mode]?.name || "Standard";
+    }
+    if (modeBtn) {
+      modeBtn.classList.toggle("mode-strict", state.mode === "hard1");
+    }
+    if (modeLockedBanner) {
+      modeLockedBanner.classList.toggle("hidden", !state.modeLocked);
+    }
+    renderModeCards();
+  }
+
+  function renderModeCards() {
+    if (!modeOptionsList) return;
+    const modes = [MODE_INFO.default, MODE_INFO.hard1, MODE_INFO.hard2, MODE_INFO.hard3];
+    modeOptionsList.innerHTML = modes.map((info) => {
+      const isSelected = state.mode === info.id;
+      const isPlaceholder = !info.available;
+      const isDisabled = isPlaceholder || state.modeLocked;
+      const cardClass = `mode-card${isSelected ? " selected" : ""}${isDisabled ? " disabled" : ""}`;
+      const badge = isPlaceholder
+        ? '<span class="mode-pill coming-soon">Coming Soon</span>'
+        : isSelected
+          ? '<span class="mode-pill selected">Active</span>'
+          : '';
+
+      return `
+        <div class="${cardClass}" data-mode="${info.id}">
+          <div class="mode-card-header">
+            <label class="mode-card-title-group">
+              <input
+                type="radio"
+                name="game1-mode-choice"
+                value="${info.id}"
+                ${isSelected ? "checked" : ""}
+                ${isDisabled ? "disabled" : ""}
+              />
+              <span class="mode-card-title">${info.name}</span>
+              ${badge}
+            </label>
+            <button
+              class="mode-info-btn"
+              type="button"
+              data-info-for="${info.id}"
+              aria-label="Info for ${info.name}"
+              aria-expanded="false"
+            >?</button>
+          </div>
+          <div class="mode-info-box hidden" id="mode-info-box-${info.id}">
+            ${info.description}
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    modeOptionsList.querySelectorAll('input[type="radio"]').forEach((radio) => {
+      radio.addEventListener("change", async (e) => {
+        const targetMode = e.target.value;
+        if (state.modeLocked || targetMode === state.mode) return;
+        if (!ALLOWED_GAMEPLAY_MODES.has(targetMode)) return;
+
+        requestInFlight = true;
+        try {
+          if (puzzle.gameToken) {
+            const res = await setFiveWinkMode({
+              puzzleId: puzzle.id,
+              mode: targetMode,
+              gameToken
+            });
+            if (res.gameToken) gameToken = res.gameToken;
+            if (res.mode) state.mode = res.mode;
+            if (res.modeLocked !== undefined) state.modeLocked = res.modeLocked;
+          } else {
+            state.mode = targetMode;
+          }
+
+          if (modePrefCheckbox?.checked) {
+            saveLocalModePreference(true, state.mode);
+          }
+
+          syncModeControls();
+          renderClues();
+          showMessage(`Mode set to ${MODE_INFO[state.mode].name}.`, true);
+        } catch (err) {
+          showMessage(err?.message || "Could not update mode.");
+          syncModeControls();
+        } finally {
+          requestInFlight = false;
+        }
+      });
+    });
+
+    modeOptionsList.querySelectorAll(".mode-info-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const modeId = btn.dataset.infoFor;
+        const box = modeOptionsList.querySelector(`#mode-info-box-${modeId}`);
+        if (!box) return;
+        const isHidden = box.classList.contains("hidden");
+        box.classList.toggle("hidden", !isHidden);
+        btn.setAttribute("aria-expanded", String(isHidden));
+      });
+    });
+  }
+
+  const currentPref = getLocalModePreference();
+  if (modePrefCheckbox) {
+    modePrefCheckbox.checked = currentPref.enabled;
+    modePrefCheckbox.addEventListener("change", () => {
+      saveLocalModePreference(modePrefCheckbox.checked, state.mode);
+    });
+  }
+
+  const handleDocumentEscape = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeModeModal();
+    }
+  };
+
+  function openModeModal() {
+    if (!modeModalBackdrop) return;
+    syncModeControls();
+    modeModalBackdrop.classList.remove("hidden");
+    modeBtn?.setAttribute("aria-expanded", "true");
+    document.addEventListener("keydown", handleDocumentEscape);
+  }
+
+  function closeModeModal() {
+    if (!modeModalBackdrop) return;
+    document.removeEventListener("keydown", handleDocumentEscape);
+    modeModalBackdrop.classList.add("hidden");
+    modeBtn?.setAttribute("aria-expanded", "false");
+    focusGame();
+  }
+
+  modeBtn?.addEventListener("click", openModeModal);
+  modeModalClose?.addEventListener("click", closeModeModal);
+  modeModalBackdrop?.addEventListener("click", (e) => {
+    if (e.target === modeModalBackdrop) {
+      closeModeModal();
+    }
+  });
+
   function syncKeyboardVisibility() {
     keyboard.classList.toggle("hidden", state.status === "finished");
   }
@@ -225,9 +477,12 @@ function renderGame1Shell(container, puzzle) {
       [GAME1_RESULT.FAILED_HARD]: "The puzzle was not solved within the normal attempts."
     };
 
+    const modeName = MODE_INFO[state.mode]?.name || "Standard";
+
     resultBox.innerHTML = `
       <div class="result-card result-${state.result.toLowerCase()}">
         <h3>${labels[state.result]}</h3>
+        <p class="result-mode-tag">Mode: <strong>${modeName}</strong></p>
         <p>${details[state.result]}</p>
         <p>The answer was: <strong>${state.answer}</strong></p>
       </div>`;
@@ -243,6 +498,15 @@ function renderGame1Shell(container, puzzle) {
     }
 
     const guess = currentInput;
+
+    if (state.mode === "hard1") {
+      const check = checkHardMode1Constraints(guess, state.guesses, state.feedback);
+      if (!check.valid) {
+        showMessage(check.message, true);
+        return;
+      }
+    }
+
     currentInput = "";
     requestInFlight = true;
 
@@ -250,7 +514,8 @@ function renderGame1Shell(container, puzzle) {
       const result = await submitFiveWinkGuess({
         puzzleId: puzzle.id,
         guess,
-        gameToken
+        gameToken,
+        mode: state.mode
       });
 
       gameToken = result.gameToken;
@@ -260,6 +525,7 @@ function renderGame1Shell(container, puzzle) {
         throw new Error(applied.message);
       }
 
+      syncModeControls();
       showMessage(result.seventhStage ? "You used all six normal attempts." : "");
       renderBoard();
       renderClues();
@@ -292,6 +558,15 @@ function renderGame1Shell(container, puzzle) {
     }
 
     const guess = currentInput;
+
+    if (state.mode === "hard1") {
+      const check = checkHardMode1Constraints(guess, state.guesses, state.feedback);
+      if (!check.valid) {
+        showMessage(check.message, true);
+        return;
+      }
+    }
+
     currentInput = "";
     requestInFlight = true;
 
@@ -299,7 +574,8 @@ function renderGame1Shell(container, puzzle) {
       const result = await submitFiveWinkGuess({
         puzzleId: puzzle.id,
         guess,
-        gameToken
+        gameToken,
+        mode: state.mode
       });
 
       gameToken = result.gameToken;
@@ -309,6 +585,7 @@ function renderGame1Shell(container, puzzle) {
         throw new Error(applied.message);
       }
 
+      syncModeControls();
       showMessage(
         result.result === GAME1_RESULT.FAILED_CLOSE
           ? "Your 7th guess was right — but it does not count as a solve."
@@ -351,6 +628,8 @@ function renderGame1Shell(container, puzzle) {
       if (!applied.ok) {
         throw new Error(applied.message);
       }
+
+      syncModeControls();
 
       currentInput = "";
       showMessage("You didn't take the final guess. Result: Failed — Hard.");
@@ -412,6 +691,15 @@ function renderGame1Shell(container, puzzle) {
   }
 
   function renderClues() {
+    if (state.mode === "hard1") {
+      clues.innerHTML = `
+        <div class="clue-box disabled-mode">
+          <strong>Clues Disabled</strong>
+          <span>Clues are not available in Hard Mode: Strict.</span>
+        </div>`;
+      return;
+    }
+
     clues.innerHTML = state.clues.map((status, index) => {
       const number = index + 1;
       const currentAttemptIndex = getNextNormalAttemptIndex(state);
@@ -457,6 +745,7 @@ function renderGame1Shell(container, puzzle) {
             throw new Error(applied.message);
           }
 
+          syncModeControls();
           showMessage("Clue revealed.");
           renderBoard();
           renderClues();
@@ -550,6 +839,14 @@ function renderGame1Shell(container, puzzle) {
   });
 
   root.addEventListener("keydown", (event) => {
+    if (modeModalBackdrop && !modeModalBackdrop.classList.contains("hidden")) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeModeModal();
+      }
+      return;
+    }
+
     if (requestInFlight) return;
 
     if (event.key === "Enter") {
@@ -607,12 +904,14 @@ function renderGame1Shell(container, puzzle) {
   });
 
   container.querySelector("#game1-back").addEventListener("click", () => {
+    document.removeEventListener("keydown", handleDocumentEscape);
     document.title = "EmniFun";
     container.dispatchEvent(new CustomEvent("game1-back"));
   });
 
   renderBoard();
   renderClues();
+  syncModeControls();
   if (state.status === "finished") {
     renderResult();
     syncKeyboardVisibility();

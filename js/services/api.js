@@ -117,14 +117,31 @@ export async function getFiveWinkPuzzle(puzzleId = null) {
 export async function submitFiveWinkGuess({
   puzzleId,
   guess,
-  gameToken
+  gameToken,
+  mode
 }) {
   return requestJson("/guess", {
     method: "POST",
     body: JSON.stringify({
       puzzleId,
       guess,
-      gameToken
+      gameToken,
+      ...(mode ? { mode } : {})
+    })
+  });
+}
+
+export async function setFiveWinkMode({
+  puzzleId,
+  gameToken,
+  mode
+}) {
+  return requestJson("/mode", {
+    method: "POST",
+    body: JSON.stringify({
+      puzzleId,
+      gameToken,
+      mode
     })
   });
 }

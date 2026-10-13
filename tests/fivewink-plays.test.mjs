@@ -56,6 +56,7 @@ async function setupTestDb() {
   db.exec(await readFile(new URL("../worker/migrations/0002_auth_security_fixes.sql", import.meta.url), "utf8"));
   db.exec(await readFile(new URL("../worker/migrations/0003_admin.sql", import.meta.url), "utf8"));
   db.exec(await readFile(new URL("../worker/migrations/0004_fivewink_plays.sql", import.meta.url), "utf8"));
+  db.exec(await readFile(new URL("../worker/migrations/0005_fivewink_modes.sql", import.meta.url), "utf8"));
   return db;
 }
 
@@ -810,4 +811,675 @@ test("25: Future-compatible account and puzzle deletion lifetime isolation", asy
   assert.equal(db.prepare("SELECT COUNT(*) as c FROM fivewink_plays WHERE emnifeed_id = 'EF-user2-del'").get().c, 1);
   const user2Play = db.prepare("SELECT * FROM fivewink_plays WHERE emnifeed_id = 'EF-user2-del'").get();
   assert.ok(db.prepare("SELECT * FROM fivewink_sessions WHERE session_id = ?").get(user2Play.session_id));
+});
+
+test("26: Mode selection via /api/fivewink/mode and placeholder rejection", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  const today = getTodayDateIndia();
+  seedPuzzle(db, { puzzleId: "p-mode-1", date: today, answer: "HOUSE" });
+
+  const pReq = new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  });
+  const pRes = await worker.fetch(pReq, env);
+  const pData = await pRes.json();
+  assert.equal(pData.mode, "default");
+  assert.equal(pData.modeLocked, false);
+
+  // Switch to hard1 before first gameplay action
+  const mRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-mode-1", mode: "hard1", gameToken: pData.gameToken })
+  }), env);
+  assert.equal(mRes.status, 200);
+  const mData = await mRes.json();
+  assert.equal(mData.ok, true);
+  assert.equal(mData.mode, "hard1");
+  assert.equal(mData.modeLocked, false);
+
+  // Reject placeholder modes hard2 and hard3
+  for (const placeholder of ["hard2", "hard3", "invalid_mode"]) {
+    const badRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+      method: "POST",
+      headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ puzzleId: "p-mode-1", mode: placeholder, gameToken: pData.gameToken })
+    }), env);
+    assert.equal(badRes.status, 400);
+    const badData = await badRes.json();
+    assert.equal(badData.ok, false);
+  }
+});
+
+test("27: Mode locks on first guess and prevents mode switching", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  const today = getTodayDateIndia();
+  seedPuzzle(db, { puzzleId: "p-mode-lock", date: today, answer: "HOUSE" });
+
+  const pRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  const pData = await pRes.json();
+
+  // First guess with mode: "hard1"
+  const gRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-mode-lock", guess: "CRANE", mode: "hard1", gameToken: pData.gameToken })
+  }), env);
+  assert.equal(gRes.status, 200);
+  const gData = await gRes.json();
+  assert.equal(gData.mode, "hard1");
+  assert.equal(gData.modeLocked, true);
+
+  // Trying to switch mode via /api/fivewink/mode now fails
+  const switchRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-mode-lock", mode: "default", gameToken: gData.gameToken })
+  }), env);
+  assert.equal(switchRes.status, 400);
+  const switchData = await switchRes.json();
+  assert.equal(switchData.message, "The game mode is locked for this puzzle.");
+
+  // Submitting a guess with conflicting mode is rejected
+  const confRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-mode-lock", guess: "PLANT", mode: "default", gameToken: gData.gameToken })
+  }), env);
+  assert.equal(confRes.status, 400);
+  const confData = await confRes.json();
+  assert.equal(confData.message, "The game mode is locked for this puzzle.");
+});
+
+test("28: Server-side Hard Mode: Strict constraint validation on guesses", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  const today = getTodayDateIndia();
+  // Answer: HOUSE
+  seedPuzzle(db, { puzzleId: "p-hard-rules", date: today, answer: "HOUSE" });
+
+  const pRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  const pData = await pRes.json();
+
+  // Guess 1: HORSE -> H(green), O(green), R(grey), S(green), E(green)
+  const g1Res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-hard-rules", guess: "HORSE", mode: "hard1", gameToken: pData.gameToken })
+  }), env);
+  assert.equal(g1Res.status, 200);
+  const g1Data = await g1Res.json();
+  assert.deepEqual(g1Data.feedback, ["correct", "correct", "absent", "correct", "correct"]);
+
+  // Guess 2 violating green pos 1: MOUSE (pos 1 is M instead of H)
+  const g2BadRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-hard-rules", guess: "MOUSE", mode: "hard1", gameToken: g1Data.gameToken })
+  }), env);
+  assert.equal(g2BadRes.status, 400);
+  const g2BadData = await g2BadRes.json();
+  assert.equal(g2BadData.message, "Position 1 must be H.");
+
+  // Valid Guess 2 obeying green constraints: HOUSE (solves puzzle)
+  const g2GoodRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-hard-rules", guess: "HOUSE", mode: "hard1", gameToken: g1Data.gameToken })
+  }), env);
+  assert.equal(g2GoodRes.status, 200);
+  const g2GoodData = await g2GoodRes.json();
+  assert.equal(g2GoodData.solved, true);
+  assert.equal(g2GoodData.mode, "hard1");
+});
+
+test("29: Clue endpoint rejection in Hard Mode: Strict and locking in Standard", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  const today = getTodayDateIndia();
+  seedPuzzle(db, { puzzleId: "p-clue-mode", date: today, answer: "HOUSE" });
+
+  const pRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  const pData = await pRes.json();
+
+  // Set mode to hard1
+  await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-clue-mode", mode: "hard1", gameToken: pData.gameToken })
+  }), env);
+
+  // Requesting clue in hard1 is rejected with 400
+  const clueRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/clue", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-clue-mode", clueNumber: 1, gameToken: pData.gameToken })
+  }), env);
+  assert.equal(clueRes.status, 400);
+  const clueData = await clueRes.json();
+  assert.equal(clueData.message, "Clues are not available in Hard Mode: Strict.");
+
+  // For a separate session in Standard mode, clue works and locks mode to default
+  const p2Res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  const p2Data = await p2Res.json();
+  const stdClueRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/clue", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-clue-mode", clueNumber: 1, gameToken: p2Data.gameToken })
+  }), env);
+  assert.equal(stdClueRes.status, 200);
+  const stdClueData = await stdClueRes.json();
+  assert.equal(stdClueData.mode, "default");
+  assert.equal(stdClueData.modeLocked, true);
+});
+
+test("30: Seventh guess obeys Hard Mode: Strict constraints", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  const today = getTodayDateIndia();
+  seedPuzzle(db, { puzzleId: "p-seventh-hard", date: today, answer: "HOUSE" });
+
+  const pRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  let pData = await pRes.json();
+  let token = pData.gameToken;
+
+  // Set mode to hard1
+  await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-seventh-hard", mode: "hard1", gameToken: token })
+  }), env);
+
+  // Six normal attempts leading up to 7th stage:
+  // Guesses 1-5 avoid locking all positions; Guess 6 (HORSE) confirms H, O, S, E as green
+  const words = ["PLANT", "BRICK", "DOWDY", "FOAMY", "SOAPY", "HORSE"];
+  for (const w of words) {
+    const res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+      method: "POST",
+      headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ puzzleId: "p-seventh-hard", guess: w, mode: "hard1", gameToken: token })
+    }), env);
+    const d = await res.json();
+    token = d.gameToken;
+    if (d.seventhStage) break;
+  }
+
+  // 7th guess violating position 1: MOUSE
+  const badSeventh = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-seventh-hard", guess: "MOUSE", mode: "hard1", gameToken: token })
+  }), env);
+  assert.equal(badSeventh.status, 400);
+  const badSeventhData = await badSeventh.json();
+  assert.equal(badSeventhData.message, "Position 1 must be H.");
+
+  // 7th guess obeying constraints: HOUSE
+  const goodSeventh = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-seventh-hard", guess: "HOUSE", mode: "hard1", gameToken: token })
+  }), env);
+  assert.equal(goodSeventh.status, 200);
+  const goodSeventhData = await goodSeventh.json();
+  assert.equal(goodSeventhData.finished, true);
+  assert.equal(goodSeventhData.result, "FAILED_CLOSE");
+  assert.equal(goodSeventhData.mode, "hard1");
+});
+
+test("31: Resumption and completed puzzle payload returns correct mode and locks", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  const today = getTodayDateIndia();
+  seedPuzzle(db, { puzzleId: "p-resume-mode", date: today, answer: "HOUSE" });
+  const user = await createTestAccount(db, { emnifeedId: "EF-user-mode", gamerTag: "ModeMaster" });
+
+  // Start puzzle authenticated
+  const pRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${user.sessionToken}` }
+  }), env);
+  const pData = await pRes.json();
+
+  // Make first guess with mode: hard1
+  const gRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-resume-mode", guess: "CRANE", mode: "hard1", gameToken: pData.gameToken })
+  }), env);
+  const gData = await gRes.json();
+
+  // Resume active puzzle
+  const resumeRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${user.sessionToken}` }
+  }), env);
+  const resumeData = await resumeRes.json();
+  assert.equal(resumeData.resumed, true);
+  assert.equal(resumeData.mode, "hard1");
+  assert.equal(resumeData.modeLocked, true);
+
+  // Solve puzzle
+  const solveRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-resume-mode", guess: "HOUSE", mode: "hard1", gameToken: resumeData.gameToken })
+  }), env);
+  const solveData = await solveRes.json();
+  assert.equal(solveData.solved, true);
+
+  // Completed puzzle access
+  const completedRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin, Cookie: `__Host-emnifun_session=${user.sessionToken}` }
+  }), env);
+  assert.equal(completedRes.status, 403);
+  const completedData = await completedRes.json();
+  assert.equal(completedData.mode, "hard1");
+  assert.equal(completedData.modeLocked, true);
+
+  // Verify fivewink_plays table row has mode = 'hard1'
+  const playRow = db.prepare("SELECT mode FROM fivewink_plays WHERE emnifeed_id = 'EF-user-mode'").get();
+  assert.equal(playRow.mode, "hard1");
+});
+
+test("32: Skip operations and mode locking: non-final skip locks mode, rejected skip does not lock mode, 7th skip locks mode", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  const today = getTodayDateIndia();
+  seedPuzzle(db, { puzzleId: "p-skip-mode", date: today, answer: "HOUSE" });
+
+  // 1. Fresh session in playing status
+  const pRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  const pData = await pRes.json();
+  const token = pData.gameToken;
+
+  // Rejected skip request (status === 'playing', seventh not available)
+  const rejSkipRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/skip", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-skip-mode", gameToken: token })
+  }), env);
+  assert.equal(rejSkipRes.status, 400);
+  const rejSkipData = await rejSkipRes.json();
+  assert.equal(rejSkipData.message, "The seventh attempt is not available.");
+
+  // Because skip was rejected, mode is NOT locked; mode change must succeed
+  const setModeRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-skip-mode", mode: "hard1", gameToken: token })
+  }), env);
+  assert.equal(setModeRes.status, 200);
+  const setModeData = await setModeRes.json();
+  assert.equal(setModeData.mode, "hard1");
+
+  // 2. Non-final skip in fivewink_sessions locks the mode immediately
+  // Manually update attempts_json to simulate an attempt consumed by skip
+  db.prepare(`
+    UPDATE fivewink_sessions
+    SET attempts_json = ?1
+    WHERE puzzle_id = 'p-skip-mode'
+  `).run(JSON.stringify(["skip", null, null, null, null, null]));
+
+  // Subsequent mode change must be rejected as locked (status 400)
+  const lockedModeRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-skip-mode", mode: "default", gameToken: token })
+  }), env);
+  assert.equal(lockedModeRes.status, 400);
+  const lockedModeData = await lockedModeRes.json();
+  assert.equal(lockedModeData.message, "The game mode is locked for this puzzle.");
+
+  // 3. Seventh-guess skip locks the mode immediately
+  const p2Res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  let p2Data = await p2Res.json();
+  let token2 = p2Data.gameToken;
+
+  // Make 6 distinct non-matching guesses to reach awaiting-seventh
+  const guesses = ["PLANT", "BRICK", "DOWDY", "FOAMY", "SOAPY", "HORSE"];
+  for (const g of guesses) {
+    const res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/guess", {
+      method: "POST",
+      headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ puzzleId: "p-skip-mode", guess: g, gameToken: token2 })
+    }), env);
+    const d = await res.json();
+    token2 = d.gameToken;
+    if (d.seventhStage) break;
+  }
+
+  // Skip the seventh attempt
+  const seventhSkipRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/skip", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-skip-mode", gameToken: token2 })
+  }), env);
+  assert.equal(seventhSkipRes.status, 200);
+  const seventhSkipData = await seventhSkipRes.json();
+  assert.equal(seventhSkipData.finished, true);
+  assert.equal(seventhSkipData.modeLocked, true);
+
+  // Attempting to change mode after seventh skip must fail
+  const postSkipModeRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-skip-mode", mode: "hard1", gameToken: seventhSkipData.gameToken })
+  }), env);
+  assert.equal(postSkipModeRes.status, 400);
+  const postSkipModeData = await postSkipModeRes.json();
+  assert.equal(postSkipModeData.message, "The game mode is locked for this puzzle.");
+});
+
+test("33: Atomic mode locking: concurrent mode change and gameplay action (guess/clue)", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  const today = getTodayDateIndia();
+  seedPuzzle(db, { puzzleId: "p-concur-mode", date: today, answer: "HOUSE" });
+
+  // A. Concurrent mode change and guess submission
+  const pRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  const pData = await pRes.json();
+  const token = pData.gameToken;
+
+  const modeReq = new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-concur-mode", mode: "hard1", gameToken: token })
+  });
+  const guessReq = new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-concur-mode", guess: "CRANE", mode: "default", gameToken: token })
+  });
+
+  const [resMode, resGuess] = await Promise.all([
+    worker.fetch(modeReq, env),
+    worker.fetch(guessReq, env)
+  ]);
+
+  // A. Mode change followed by conflicting guess submission is rejected with 400
+  const dMode = await resMode.json();
+  const dGuess = await resGuess.json();
+  assert.equal(resMode.status, 200);
+  assert.equal(dMode.mode, "hard1");
+  assert.equal(resGuess.status, 400);
+  assert.equal(dGuess.message, "The game mode is locked for this puzzle.");
+
+  // B. Genuine concurrent OCC race: both requests load version 1 simultaneously
+  let loadCount = 0;
+  let releaseFirst;
+  const barrier = new Promise((resolve) => { releaseFirst = resolve; });
+
+  const customDb = {
+    ...env.DB,
+    prepare(query) {
+      const stmt = env.DB.prepare(query);
+      return {
+        bind(...args) {
+          stmt.bind(...args);
+          return this;
+        },
+        async first() {
+          const res = await stmt.first();
+          if (typeof query === "string" && query.includes("FROM fivewink_sessions WHERE session_id = ?1")) {
+            loadCount++;
+            if (loadCount === 1) {
+              // First request pauses until second request also reads version 1
+              await barrier;
+            } else if (loadCount === 2) {
+              // Second request has also loaded version 1; release first request
+              releaseFirst();
+            }
+          }
+          return res;
+        },
+        async run() {
+          return stmt.run();
+        },
+        async all() {
+          return stmt.all();
+        }
+      };
+    }
+  };
+  const concurEnv = { ...env, DB: customDb };
+
+  const p2Res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  const p2Data = await p2Res.json();
+  const token2 = p2Data.gameToken;
+
+  const mode2Req = new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-concur-mode", mode: "hard1", gameToken: token2 })
+  });
+  const clue2Req = new Request("https://emnifun.github.io/api/fivewink/clue", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-concur-mode", clueNumber: 1, gameToken: token2 })
+  });
+
+  const [resMode2, resClue2] = await Promise.all([
+    worker.fetch(mode2Req, concurEnv),
+    worker.fetch(clue2Req, concurEnv)
+  ]);
+
+  const statuses2 = [resMode2.status, resClue2.status].sort();
+  assert.deepEqual(statuses2, [200, 409], "Exactly one concurrent action must succeed and one must fail with 409 due to version conflict");
+
+  // C. Genuine concurrent OCC race: concurrent mode change and guess submission both loading version 1
+  let loadCount3 = 0;
+  let releaseFirst3;
+  const barrier3 = new Promise((resolve) => { releaseFirst3 = resolve; });
+
+  const customDb3 = {
+    ...env.DB,
+    prepare(query) {
+      const stmt = env.DB.prepare(query);
+      return {
+        bind(...args) {
+          stmt.bind(...args);
+          return this;
+        },
+        async first() {
+          const res = await stmt.first();
+          if (typeof query === "string" && query.includes("FROM fivewink_sessions WHERE session_id = ?1")) {
+            loadCount3++;
+            if (loadCount3 === 1) {
+              await barrier3;
+            } else if (loadCount3 === 2) {
+              releaseFirst3();
+            }
+          }
+          return res;
+        },
+        async run() {
+          return stmt.run();
+        },
+        async all() {
+          return stmt.all();
+        }
+      };
+    }
+  };
+  const concurEnv3 = { ...env, DB: customDb3 };
+
+  const p3Res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  const p3Data = await p3Res.json();
+  const token3 = p3Data.gameToken;
+
+  const mode3Req = new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-concur-mode", mode: "hard1", gameToken: token3 })
+  });
+  const guess3Req = new Request("https://emnifun.github.io/api/fivewink/guess", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-concur-mode", guess: "CRANE", mode: "hard1", gameToken: token3 })
+  });
+
+  const [resMode3, resGuess3] = await Promise.all([
+    worker.fetch(mode3Req, concurEnv3),
+    worker.fetch(guess3Req, concurEnv3)
+  ]);
+
+  const statuses3 = [resMode3.status, resGuess3.status].sort();
+  assert.deepEqual(statuses3, [200, 409], "Exactly one concurrent mode/guess action must succeed and one must fail with 409 due to version conflict");
+});
+
+test("34: Mode locking regression: non-final skip with updated session version cannot change mode (Standard -> Strict and Strict -> Standard)", async () => {
+  const db = await setupTestDb();
+  const env = createEnv(db);
+  const today = getTodayDateIndia();
+  seedPuzzle(db, { puzzleId: "p-skip-seq", date: today, answer: "HOUSE" });
+
+  // --- Sequence 1: Standard -> Skip -> attempt switch to Hard Mode: Strict ---
+  // 1. Start new puzzle in Standard mode
+  const p1Res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env);
+  const p1Data = await p1Res.json();
+  const token1 = p1Data.gameToken;
+
+  // 2. Successfully Skip an attempt without finishing the puzzle (incrementing version from 1 to 2)
+  db.prepare(`
+    UPDATE fivewink_sessions
+    SET attempts_json = ?1,
+        version = version + 1
+    WHERE puzzle_id = 'p-skip-seq' AND mode = 'default'
+  `).run(JSON.stringify(["skip", null, null, null, null, null]));
+
+  // 3. Obtain current session version (version 2)
+  const s1Row = db.prepare("SELECT session_id, version, mode, status FROM fivewink_sessions WHERE puzzle_id = 'p-skip-seq'").get();
+  assert.equal(s1Row.version, 2);
+  assert.equal(s1Row.status, "playing");
+
+  // 4. Send a fresh, otherwise valid request to change mode to Hard Mode: Strict
+  const change1Res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-skip-seq", mode: "hard1", gameToken: token1 })
+  }), env);
+
+  // 5. Confirm the Worker rejects the request because the successful Skip already locked the mode
+  assert.equal(change1Res.status, 400);
+  const change1Data = await change1Res.json();
+  assert.equal(change1Data.message, "The game mode is locked for this puzzle.");
+
+  // 6. Confirm that the atomic SQL query directly rejects changing mode even when supplied version 2
+  const sqlUpdate1 = db.prepare(`
+    UPDATE fivewink_sessions
+        SET mode = ?1,
+            version = version + 1,
+            updated_at = ?2
+      WHERE session_id = ?3
+        AND version = ?4
+        AND clues_used = 0
+        AND status = 'playing'
+        AND (guesses_json = '[]' OR guesses_json IS NULL)
+        AND (
+          attempts_json IS NULL
+          OR (
+            attempts_json NOT LIKE '%"skip"%'
+            AND attempts_json NOT LIKE '%"guess"%'
+            AND attempts_json NOT LIKE '%"clue"%'
+            AND attempts_json NOT LIKE '%"%'
+          )
+        )
+        AND seventh_guess IS NULL
+        AND result IS NULL
+  `).run("hard1", Math.floor(Date.now() / 1000), s1Row.session_id, s1Row.version);
+  assert.equal(sqlUpdate1.changes, 0, "SQL update must match zero rows because attempts_json contains a skip");
+
+  // --- Sequence 2: Hard Mode: Strict -> Skip -> attempt switch to Standard ---
+  const db2 = await setupTestDb();
+  const env2 = createEnv(db2);
+  seedPuzzle(db2, { puzzleId: "p-skip-seq2", date: today, answer: "CHAIR" });
+
+  // 1. Start new puzzle and select Hard Mode: Strict
+  const p2Res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/puzzle", {
+    headers: { Origin: allowedOrigin }
+  }), env2);
+  const p2Data = await p2Res.json();
+  const token2 = p2Data.gameToken;
+
+  const setStrictRes = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-skip-seq2", mode: "hard1", gameToken: token2 })
+  }), env2);
+  assert.equal(setStrictRes.status, 200);
+
+  // 2. Successfully Skip an attempt without finishing the puzzle (incrementing version from 2 to 3)
+  db2.prepare(`
+    UPDATE fivewink_sessions
+    SET attempts_json = ?1,
+        version = version + 1
+    WHERE puzzle_id = 'p-skip-seq2' AND mode = 'hard1'
+  `).run(JSON.stringify(["skip", null, null, null, null, null]));
+
+  // 3. Obtain current session version (version 3)
+  const s2Row = db2.prepare("SELECT session_id, version, mode, status FROM fivewink_sessions WHERE puzzle_id = 'p-skip-seq2'").get();
+  assert.equal(s2Row.version, 3);
+  assert.equal(s2Row.mode, "hard1");
+  assert.equal(s2Row.status, "playing");
+
+  // 4. Send a fresh, otherwise valid request to change mode back to Standard
+  const change2Res = await worker.fetch(new Request("https://emnifun.github.io/api/fivewink/mode", {
+    method: "POST",
+    headers: { Origin: allowedOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({ puzzleId: "p-skip-seq2", mode: "default", gameToken: token2 })
+  }), env2);
+
+  // 5. Confirm the Worker rejects the request because the successful Skip already locked the mode
+  assert.equal(change2Res.status, 400);
+  const change2Data = await change2Res.json();
+  assert.equal(change2Data.message, "The game mode is locked for this puzzle.");
+
+  // 6. Confirm that the atomic SQL query directly rejects changing mode even when supplied version 3
+  const sqlUpdate2 = db2.prepare(`
+    UPDATE fivewink_sessions
+        SET mode = ?1,
+            version = version + 1,
+            updated_at = ?2
+      WHERE session_id = ?3
+        AND version = ?4
+        AND clues_used = 0
+        AND status = 'playing'
+        AND (guesses_json = '[]' OR guesses_json IS NULL)
+        AND (
+          attempts_json IS NULL
+          OR (
+            attempts_json NOT LIKE '%"skip"%'
+            AND attempts_json NOT LIKE '%"guess"%'
+            AND attempts_json NOT LIKE '%"clue"%'
+            AND attempts_json NOT LIKE '%"%'
+          )
+        )
+        AND seventh_guess IS NULL
+        AND result IS NULL
+  `).run("default", Math.floor(Date.now() / 1000), s2Row.session_id, s2Row.version);
+  assert.equal(sqlUpdate2.changes, 0, "SQL update must match zero rows because attempts_json contains a skip");
 });

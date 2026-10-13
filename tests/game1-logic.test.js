@@ -18,7 +18,11 @@ import {
   isEnglishFiveLetterWord,
   isGuessAlreadyUsed,
   sanitizeGuessInput,
-  restoreGame1State
+  restoreGame1State,
+  checkHardMode1Constraints,
+  isSessionLocked,
+  FIVEWINK_MODES,
+  ALLOWED_GAMEPLAY_MODES
 } from "../js/games/game1/game1-logic.js";
 
 function assert(condition, message) {
@@ -293,6 +297,120 @@ assert(GAME1_CONFIG.seventhAttemptCloseRule === "exact-answer", "Seventh close r
   assert(state.attempts[1] === "clue", "Attempt 1 must be clue.");
   assert(state.attempts[2] === null, "Attempt 2 must be null.");
   assert(getNextNormalAttemptIndex(state) === 2, "Next normal attempt must be row 3 (index 2).");
+}
+
+{
+  // Test: Initial state has default mode and is not locked
+  const state = createGame1State();
+  assert(state.mode === FIVEWINK_MODES.DEFAULT, "Initial mode must be default.");
+  assert(state.modeLocked === false, "Initial mode must not be locked.");
+
+  // Test: Normal guess locks mode and respects mode in response
+  const guessRes = {
+    ok: true,
+    attemptIndex: 0,
+    feedback: ["correct", "absent", "absent", "absent", "absent"],
+    solved: false,
+    seventhStage: false,
+    mode: "hard1"
+  };
+  applyNormalGuessResult(state, "CRANE", guessRes);
+  assert(state.mode === "hard1", "Mode must update to hard1 from response.");
+  assert(state.modeLocked === true, "Mode must lock on first guess.");
+}
+
+{
+  // Test: Clue usage locks mode to default
+  const state = createGame1State();
+  applyClueResult(state, 1);
+  assert(state.mode === "default", "Mode must be default when clue is used.");
+  assert(state.modeLocked === true, "Mode must lock when clue is used.");
+}
+
+{
+  // Test: Restoration preserves mode and locked state
+  const state = createGame1State();
+  const payload = {
+    attempts: ["guess", null, null, null, null, null],
+    guesses: ["CRANE"],
+    evaluations: [["correct", "absent", "absent", "absent", "absent"]],
+    mode: "hard1",
+    status: "playing"
+  };
+  restoreGame1State(state, payload);
+  assert(state.mode === "hard1", "Restoration must preserve mode.");
+  assert(state.modeLocked === true, "Restoration must mark modeLocked true when guesses exist.");
+}
+
+{
+  // Test: Client checkHardMode1Constraints enforcement
+  const prevGuesses = ["CRANE"];
+  const prevFeedback = [["correct", "wrong-position", "absent", "absent", "absent"]]; // C blue at 1, R orange at 2
+
+  // Blue constraint check
+  assert(
+    !checkHardMode1Constraints("PLANT", prevGuesses, prevFeedback).valid,
+    "Missing blue C at position 1 must fail."
+  );
+
+  // Orange position check
+  assert(
+    !checkHardMode1Constraints("CROSS", prevGuesses, prevFeedback).valid,
+    "Orange R at same position 2 must fail."
+  );
+
+  // Orange inclusion check
+  assert(
+    !checkHardMode1Constraints("CLOWN", prevGuesses, prevFeedback).valid,
+    "Missing orange R must fail."
+  );
+
+  // Valid guess satisfying both
+  assert(
+    checkHardMode1Constraints("CHORE", prevGuesses, prevFeedback).valid,
+    "CHORE has C at pos 1 and R at pos 4, satisfying constraints."
+  );
+}
+
+{
+  // Test: buildPlayerHistoryRecord includes mode
+  const state = createGame1State();
+  state.mode = "hard1";
+  state.result = GAME1_RESULT.SOLVED;
+  const history = buildPlayerHistoryRecord(state, { date: "2026-10-13", game: "game1" });
+  assert(history.mode === "hard1", "Player history record must include mode.");
+}
+
+{
+  // Test: Non-final successful Skip locks mode immediately even with zero guesses and zero clues
+  const state = createGame1State();
+  const payload = {
+    attempts: ["skip", null, null, null, null, null],
+    guesses: [],
+    evaluations: [],
+    cluesUsed: 0,
+    status: "playing",
+    mode: "hard1"
+  };
+  const res = restoreGame1State(state, payload);
+  assert(res.ok, "Restoring state with non-final skip must succeed.");
+  assert(isSessionLocked(state) === true, "isSessionLocked must return true when an attempt was skipped.");
+  assert(state.modeLocked === true, "Non-final skip must immediately lock the mode.");
+}
+
+{
+  // Test: Seventh-guess skip locks the mode immediately
+  const state = createGame1State();
+  state.status = "awaiting-seventh";
+  state.mode = "hard1";
+  const skipResult = applySeventhSkipResult(state, {
+    ok: true,
+    result: GAME1_RESULT.FAILED_HARD,
+    answer: "HOUSE"
+  });
+  assert(skipResult.ok, "Applying 7th skip must succeed.");
+  assert(state.modeLocked === true, "Seventh-guess skip must immediately lock the mode.");
+  assert(isSessionLocked(state) === true, "Seventh-guess skip must mark session locked.");
 }
 
 console.log("FiveWink client-state checks passed.");

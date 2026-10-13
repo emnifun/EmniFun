@@ -1,6 +1,9 @@
 import {
+  ALLOWED_GAMEPLAY_MODES,
+  checkHardMode1Constraints,
   currentNormalAttemptIndex,
   evaluateGuess,
+  FIVEWINK_MODES,
   FIVEWINK_RESULTS,
   getSeventhResult,
   isFiveLetterGuess,
@@ -105,7 +108,7 @@ function parseSession(row) {
     throw new Error("Game session data is invalid.");
   }
 
-  const allowedAttemptValues = new Set(["guess", "clue"]);
+  const allowedAttemptValues = new Set(["guess", "clue", "skip"]);
   if (attempts.some((value) => value !== null && !allowedAttemptValues.has(value))) {
     throw new Error("Game session data is invalid.");
   }
@@ -140,6 +143,8 @@ function parseSession(row) {
     throw new Error("Game session data is invalid.");
   }
 
+  const mode = (row.mode && ALLOWED_GAMEPLAY_MODES.has(row.mode)) ? row.mode : "default";
+
   return {
     sessionId: row.session_id,
     puzzleId: row.puzzle_id,
@@ -152,6 +157,7 @@ function parseSession(row) {
     status: row.status,
     result: row.result,
     seventhGuess: row.seventh_guess,
+    mode,
     version: row.version,
     expiresAt: row.expires_at
   };
@@ -159,7 +165,7 @@ function parseSession(row) {
 
 async function loadSession(env, sessionId) {
   const row = await env.DB.prepare(
-    "SELECT session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json, clues_used, status, result, seventh_guess, version, expires_at FROM fivewink_sessions WHERE session_id = ?1 LIMIT 1"
+    "SELECT session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json, clues_used, status, result, seventh_guess, mode, version, expires_at FROM fivewink_sessions WHERE session_id = ?1 LIMIT 1"
   )
     .bind(sessionId)
     .first();
@@ -179,7 +185,17 @@ async function loadSession(env, sessionId) {
   }
 }
 
+export function isSessionLocked(session) {
+  if (!session) return false;
+  const hasAttemptAction = Array.isArray(session.attempts) && session.attempts.some((val) => val !== null);
+  const hasGuesses = Array.isArray(session.guesses) && session.guesses.length > 0;
+  const hasCluesUsed = Number(session.cluesUsed ?? session.clues_used ?? 0) > 0;
+  const isNotPlaying = session.status !== "playing";
+  return hasAttemptAction || hasGuesses || hasCluesUsed || isNotPlaying;
+}
+
 async function saveSession(env, session) {
+  const sessionMode = ALLOWED_GAMEPLAY_MODES.has(session.mode) ? session.mode : "default";
   const result = await env.DB.prepare(`UPDATE fivewink_sessions
      SET attempts_json = ?1,
          guesses_json = ?2,
@@ -188,9 +204,10 @@ async function saveSession(env, session) {
          status = ?5,
          result = ?6,
          seventh_guess = ?7,
+         mode = ?8,
          version = version + 1,
-         updated_at = ?8
-     WHERE session_id = ?9 AND version = ?10`)
+         updated_at = ?9
+     WHERE session_id = ?10 AND version = ?11`)
     .bind(
       JSON.stringify(session.attempts),
       JSON.stringify(session.guesses),
@@ -199,6 +216,7 @@ async function saveSession(env, session) {
       session.status,
       session.result,
       session.seventhGuess,
+      sessionMode,
       Math.floor(Date.now() / 1000),
       session.sessionId,
       session.version
@@ -209,6 +227,7 @@ async function saveSession(env, session) {
     return { ok: false, message: "The game state changed. Please try again." };
   }
 
+  session.mode = sessionMode;
   session.version += 1;
   return { ok: true };
 }
@@ -231,16 +250,17 @@ async function getCurrentPublishedPuzzle(env) {
     .first();
 }
 
-async function createSession(env, puzzle) {
+async function createSession(env, puzzle, mode = "default") {
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + 36 * 60 * 60;
   const sessionId = crypto.randomUUID();
+  const sessionMode = ALLOWED_GAMEPLAY_MODES.has(mode) ? mode : "default";
 
   await env.DB.prepare(
     `INSERT INTO fivewink_sessions
       (session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json,
-       clues_used, status, result, seventh_guess, version, created_at, updated_at, expires_at)
-     VALUES (?1, ?2, 'game1', ?3, ?4, ?5, ?6, 0, 'playing', NULL, NULL, 1, ?7, ?7, ?8)`
+       clues_used, status, result, seventh_guess, mode, version, created_at, updated_at, expires_at)
+     VALUES (?1, ?2, 'game1', ?3, ?4, ?5, ?6, 0, 'playing', NULL, NULL, ?7, 1, ?8, ?8, ?9)`
   )
     .bind(
       sessionId,
@@ -249,12 +269,13 @@ async function createSession(env, puzzle) {
       JSON.stringify(Array(6).fill(null)),
       JSON.stringify([]),
       JSON.stringify(Array(5).fill("available")),
+      sessionMode,
       now,
       expiresAt
     )
     .run();
 
-  return { sessionId, expiresAt };
+  return { sessionId, expiresAt, mode: sessionMode };
 }
 
 async function createSessionToken(session, secret) {
@@ -338,7 +359,7 @@ function updateAfterNormalGuess(session, guess, feedback, answer) {
 async function handleExistingPlay(env, sessionId, puzzle, clues, request) {
   const existingSession = await env.DB.prepare(
     `SELECT session_id, puzzle_id, game, date, attempts_json, guesses_json, clues_json,
-            clues_used, status, result, seventh_guess, version, created_at, updated_at, expires_at
+            clues_used, status, result, seventh_guess, mode, version, created_at, updated_at, expires_at
        FROM fivewink_sessions
       WHERE session_id = ?1
       LIMIT 1`
@@ -379,6 +400,16 @@ async function handleExistingPlay(env, sessionId, puzzle, clues, request) {
     );
   }
 
+  const sessionMode = (existingSession.mode && ALLOWED_GAMEPLAY_MODES.has(existingSession.mode))
+    ? existingSession.mode
+    : "default";
+  const isLocked = isSessionLocked({
+    attempts,
+    guesses,
+    cluesUsed: existingSession.clues_used,
+    status: existingSession.status
+  });
+
   const answer = normalizeGuess(puzzle.answer);
   const evaluations = guesses.map((g) => evaluateGuess(g, answer));
 
@@ -399,6 +430,8 @@ async function handleExistingPlay(env, sessionId, puzzle, clues, request) {
       answer,
       result: existingSession.result,
       status: "finished",
+      mode: sessionMode,
+      modeLocked: true,
       attempts,
       guesses,
       evaluations,
@@ -469,6 +502,8 @@ async function handleExistingPlay(env, sessionId, puzzle, clues, request) {
         length: 5,
         clues,
         gameToken,
+        mode: sessionMode,
+        modeLocked: isLocked,
         attempts,
         guesses,
         evaluations,
@@ -557,7 +592,9 @@ async function handlePuzzle(request, env) {
         date: puzzle.date,
         length: 5,
         clues,
-        gameToken
+        gameToken,
+        mode: session.mode,
+        modeLocked: false
       },
       200,
       {},
@@ -590,10 +627,10 @@ async function handlePuzzle(request, env) {
   // Uses PRIMARY KEY (emnifeed_id, puzzle_id) to protect against concurrent duplicate requests.
   try {
     await env.DB.prepare(
-      `INSERT INTO fivewink_plays (emnifeed_id, puzzle_id, session_id, created_at)
-       VALUES (?1, ?2, ?3, ?4)`
+      `INSERT INTO fivewink_plays (emnifeed_id, puzzle_id, session_id, created_at, mode)
+       VALUES (?1, ?2, ?3, ?4, ?5)`
     )
-      .bind(emnifeedId, puzzle.puzzle_id, newSession.sessionId, now)
+      .bind(emnifeedId, puzzle.puzzle_id, newSession.sessionId, now, newSession.mode)
       .run();
   } catch (error) {
     // If concurrent request won the race, fetch the winning play and handle it
@@ -631,7 +668,9 @@ async function handlePuzzle(request, env) {
       date: puzzle.date,
       length: 5,
       clues,
-      gameToken
+      gameToken,
+      mode: newSession.mode,
+      modeLocked: false
     },
     200,
     {},
@@ -688,6 +727,28 @@ async function handleGuess(request, env) {
     return jsonResponse({ ok: false, message: "The game has ended." }, 400);
   }
 
+  const isLocked = isSessionLocked(session);
+  const requestedMode = typeof body?.mode === "string" ? body.mode.trim().toLowerCase() : null;
+
+  if (isLocked) {
+    if (requestedMode && requestedMode !== session.mode) {
+      return jsonResponse({ ok: false, message: "The game mode is locked for this puzzle." }, 400);
+    }
+  } else {
+    if (requestedMode) {
+      if (!ALLOWED_GAMEPLAY_MODES.has(requestedMode)) {
+        return jsonResponse({ ok: false, message: "Invalid or unavailable game mode." }, 400);
+      }
+      if (session.mode === "hard1" && requestedMode !== "hard1") {
+        return jsonResponse({ ok: false, message: "The game mode is locked for this puzzle." }, 400);
+      }
+    }
+  }
+
+  const effectiveMode = isLocked
+    ? session.mode
+    : (session.mode === "hard1" ? "hard1" : (requestedMode || session.mode || "default"));
+
   const puzzle = await getPuzzleById(env, puzzleId);
   if (!puzzle) {
     return jsonResponse(
@@ -718,6 +779,16 @@ async function handleGuess(request, env) {
   }
 
   const answer = normalizeGuess(puzzle.answer);
+
+  if (effectiveMode === "hard1") {
+    const previousEvaluations = session.guesses.map((g) => evaluateGuess(g, answer));
+    const constraintResult = checkHardMode1Constraints(guess, session.guesses, previousEvaluations);
+    if (!constraintResult.valid) {
+      return jsonResponse({ ok: false, message: constraintResult.message }, 400);
+    }
+  }
+
+  session.mode = effectiveMode;
   const feedback = evaluateGuess(guess, answer);
 
   if (session.status === "playing") {
@@ -737,11 +808,19 @@ async function handleGuess(request, env) {
       return jsonResponse(saveResult, 409);
     }
 
+    await env.DB.prepare(
+      "UPDATE fivewink_plays SET mode = ?1 WHERE session_id = ?2"
+    )
+      .bind(session.mode, session.sessionId)
+      .run();
+
     const gameToken = await createSessionToken(session, env.GAME_TOKEN_SECRET);
 
     return jsonResponse({
       ...result,
-      gameToken
+      gameToken,
+      mode: session.mode,
+      modeLocked: true
     });
   }
 
@@ -758,6 +837,12 @@ async function handleGuess(request, env) {
       return jsonResponse(saveResult, 409);
     }
 
+    await env.DB.prepare(
+      "UPDATE fivewink_plays SET mode = ?1 WHERE session_id = ?2"
+    )
+      .bind(session.mode, session.sessionId)
+      .run();
+
     const gameToken = await createSessionToken(session, env.GAME_TOKEN_SECRET);
 
     return jsonResponse({
@@ -769,7 +854,9 @@ async function handleGuess(request, env) {
       finished: true,
       seventhGuessUsed: true,
       answer,
-      gameToken
+      gameToken,
+      mode: session.mode,
+      modeLocked: true
     });
   }
 
@@ -817,6 +904,13 @@ async function handleClue(request, env) {
     return jsonResponse({ ok: false, message: "The game has ended." }, 400);
   }
 
+  if (session.mode === "hard1") {
+    return jsonResponse(
+      { ok: false, message: "Clues are not available in Hard Mode: Strict." },
+      400
+    );
+  }
+
   if (
     !Number.isInteger(clueNumber) ||
     clueNumber < 1 ||
@@ -844,18 +938,27 @@ async function handleClue(request, env) {
   session.attempts[attemptIndex] = "clue";
   session.clues[attemptIndex] = "used";
   session.cluesUsed += 1;
+  session.mode = "default";
 
   const saveResult = await saveSession(env, session);
   if (!saveResult.ok) {
     return jsonResponse(saveResult, 409);
   }
 
+  await env.DB.prepare(
+    "UPDATE fivewink_plays SET mode = ?1 WHERE session_id = ?2"
+  )
+    .bind("default", session.sessionId)
+    .run();
+
   const gameToken = await createSessionToken(session, env.GAME_TOKEN_SECRET);
 
   return jsonResponse({
     ok: true,
     clueNumber,
-    gameToken
+    gameToken,
+    mode: "default",
+    modeLocked: true
   });
 }
 
@@ -921,6 +1024,12 @@ async function handleSkip(request, env) {
     return jsonResponse(saveResult, 409);
   }
 
+  await env.DB.prepare(
+    "UPDATE fivewink_plays SET mode = ?1 WHERE session_id = ?2"
+  )
+    .bind(session.mode, session.sessionId)
+    .run();
+
   const gameToken = await createSessionToken(session, env.GAME_TOKEN_SECRET);
 
   return jsonResponse({
@@ -929,6 +1038,122 @@ async function handleSkip(request, env) {
     result: FIVEWINK_RESULTS.FAILED_HARD,
     seventhGuessUsed: false,
     answer,
+    gameToken,
+    mode: session.mode,
+    modeLocked: true
+  });
+}
+
+async function handleSetMode(request, env) {
+  requireConfiguredEnvironment(env);
+
+  const body = await parseRequestJson(request);
+  const puzzleId = String(body?.puzzleId ?? "").trim();
+  const rawMode = typeof body?.mode === "string" ? body.mode.trim().toLowerCase() : "";
+
+  const tokenResult = await verifyGameToken(
+    body?.gameToken,
+    env.GAME_TOKEN_SECRET
+  );
+
+  if (!tokenResult.ok) {
+    return jsonResponse({ ok: false, message: tokenResult.message }, 400);
+  }
+
+  if (tokenResult.payload.puzzleId !== puzzleId) {
+    return jsonResponse(
+      { ok: false, message: "Game session does not match this puzzle." },
+      400
+    );
+  }
+
+  const sessionResult = await loadSession(
+    env,
+    tokenResult.payload.sessionId
+  );
+
+  if (!sessionResult.ok) {
+    return jsonResponse(
+      { ok: false, message: sessionResult.message },
+      400
+    );
+  }
+
+  const session = sessionResult.session;
+
+  if (
+    session.puzzleId !== tokenResult.payload.puzzleId ||
+    session.date !== tokenResult.payload.date
+  ) {
+    return jsonResponse({ ok: false, message: "Game session is invalid." }, 400);
+  }
+
+  if (isSessionLocked(session)) {
+    return jsonResponse(
+      { ok: false, message: "The game mode is locked for this puzzle." },
+      400
+    );
+  }
+
+  if (!ALLOWED_GAMEPLAY_MODES.has(rawMode)) {
+    return jsonResponse(
+      { ok: false, message: "Invalid or unavailable game mode." },
+      400
+    );
+  }
+
+  const updateRes = await env.DB.prepare(
+    `UPDATE fivewink_sessions
+        SET mode = ?1,
+            version = version + 1,
+            updated_at = ?2
+      WHERE session_id = ?3
+        AND version = ?4
+        AND clues_used = 0
+        AND status = 'playing'
+        AND (guesses_json = '[]' OR guesses_json IS NULL)
+        AND (
+          attempts_json IS NULL
+          OR (
+            attempts_json NOT LIKE '%"skip"%'
+            AND attempts_json NOT LIKE '%"guess"%'
+            AND attempts_json NOT LIKE '%"clue"%'
+            AND attempts_json NOT LIKE '%"%'
+          )
+        )
+        AND seventh_guess IS NULL
+        AND result IS NULL`
+  )
+    .bind(
+      rawMode,
+      Math.floor(Date.now() / 1000),
+      session.sessionId,
+      session.version
+    )
+    .run();
+
+  if (updateRes.meta?.changes !== 1) {
+    return jsonResponse(
+      { ok: false, message: "The game state changed or is locked. Please try again." },
+      409
+    );
+  }
+
+  session.mode = rawMode;
+  session.version += 1;
+
+  await env.DB.prepare(
+    "UPDATE fivewink_plays SET mode = ?1 WHERE session_id = ?2"
+  )
+    .bind(session.mode, session.sessionId)
+    .run();
+
+  const gameToken = await createSessionToken(session, env.GAME_TOKEN_SECRET);
+
+  return jsonResponse({
+    ok: true,
+    mode: session.mode,
+    modeLocked: false,
     gameToken
   });
 }
@@ -958,6 +1183,10 @@ async function handleRequest(request, env) {
 
   if (request.method === "GET" && path === "/api/fivewink/puzzle") {
     return handlePuzzle(request, env);
+  }
+
+  if (request.method === "POST" && path === "/api/fivewink/mode") {
+    return handleSetMode(request, env);
   }
 
   if (request.method === "POST" && path === "/api/fivewink/guess") {

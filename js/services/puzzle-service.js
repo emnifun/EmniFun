@@ -53,7 +53,9 @@ export async function getPublishedPuzzleForToday() {
       cluesUsed: response.cluesUsed || 0,
       seventhGuess: response.seventhGuess || null,
       seventhEvaluation: response.seventhEvaluation || null,
-      status: response.status || null
+      status: response.status || null,
+      mode: response.mode || "default",
+      modeLocked: Boolean(response.modeLocked)
     };
 
     if (response.answer) {

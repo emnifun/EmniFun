@@ -11,6 +11,18 @@ export const GAME1_RESULT = Object.freeze({
   FAILED_HARD: "FAILED_HARD"
 });
 
+export const FIVEWINK_MODES = Object.freeze({
+  DEFAULT: "default",
+  HARD1: "hard1",
+  HARD2: "hard2",
+  HARD3: "hard3"
+});
+
+export const ALLOWED_GAMEPLAY_MODES = new Set([
+  FIVEWINK_MODES.DEFAULT,
+  FIVEWINK_MODES.HARD1
+]);
+
 export const GAME1_CONFIG = Object.freeze({
   normalAttempts: 6,
   clueCount: 5,
@@ -28,7 +40,9 @@ export function createGame1State() {
     seventhGuessUsed: false,
     status: "playing",
     result: null,
-    answer: null
+    answer: null,
+    mode: FIVEWINK_MODES.DEFAULT,
+    modeLocked: false
   };
 
   Object.defineProperty(state, "attemptNumber", {
@@ -105,6 +119,11 @@ export function applyNormalGuessResult(state, guess, response) {
   state.feedback[attemptIndex] = response.feedback;
   skipClueForAttempt(state, attemptIndex);
 
+  if (response.mode) {
+    state.mode = response.mode;
+  }
+  state.modeLocked = true;
+
   if (response.solved) {
     state.status = "finished";
     state.result = GAME1_RESULT.SOLVED;
@@ -139,6 +158,10 @@ export function applySeventhGuessResult(state, guess, response) {
   state.result = response.result;
   state.answer = response.answer ? normalizeGuess(response.answer) : null;
   state.seventhGuessUsed = true;
+  if (response.mode) {
+    state.mode = response.mode;
+  }
+  state.modeLocked = true;
 
   state.usedGuesses.add(normalized);
   state.guesses.push(normalized);
@@ -171,6 +194,8 @@ export function applyClueResult(state, clueNumber) {
   state.attempts[attemptIndex] = "clue";
   state.clues[attemptIndex] = "used";
   state.cluesUsed += 1;
+  state.mode = FIVEWINK_MODES.DEFAULT;
+  state.modeLocked = true;
 
   return { ok: true };
 }
@@ -188,6 +213,10 @@ export function applySeventhSkipResult(state, response) {
   state.result = GAME1_RESULT.FAILED_HARD;
   state.answer = normalizeGuess(response.answer);
   state.seventhGuessUsed = false;
+  if (response.mode) {
+    state.mode = response.mode;
+  }
+  state.modeLocked = true;
 
   return { ok: true };
 }
@@ -199,7 +228,8 @@ export function buildPlayerHistoryRecord(state, puzzle) {
     result: state.result,
     attemptsUsed: state.guesses.filter(Boolean).length,
     cluesUsed: state.cluesUsed,
-    seventhGuessUsed: state.seventhGuessUsed
+    seventhGuessUsed: state.seventhGuessUsed,
+    mode: state.mode || "default"
   };
 }
 
@@ -275,5 +305,132 @@ export function restoreGame1State(state, data) {
     }
   }
 
+  if (data.mode) {
+    state.mode = data.mode;
+  }
+
+  const hasActions = isSessionLocked(state);
+
+  state.modeLocked = Boolean(
+    data.modeLocked !== undefined ? data.modeLocked : hasActions
+  );
+
   return { ok: true };
+}
+
+export function isSessionLocked(state) {
+  if (!state) return false;
+  const hasAttemptAction = Array.isArray(state.attempts) && state.attempts.some((val) => val !== null);
+  const hasGuesses = Array.isArray(state.guesses) && state.guesses.filter(Boolean).length > 0;
+  const hasCluesUsed = Number(state.cluesUsed || 0) > 0;
+  const isNotPlaying = state.status !== "playing";
+  return hasAttemptAction || hasGuesses || hasCluesUsed || isNotPlaying;
+}
+
+/**
+ * Validate a candidate guess against Hard Mode: Strict (Hard Mode 1) rules.
+ *
+ * Rules:
+ * 1. Blue letters (status === "correct"):
+ *    Any position confirmed blue in a previous guess must have the exact same
+ *    letter in that position in every subsequent guess.
+ * 2. Orange letters (status === "wrong-position"):
+ *    A letter confirmed orange in a previous guess cannot be placed in any position
+ *    where it was confirmed orange.
+ * 3. Duplicate-letter and presence correctness:
+ *    Any letter confirmed orange or blue must be present in the new guess.
+ *    If a previous guess confirmed multiple occurrences of a letter (e.g. 2 E's
+ *    as blue or orange), the new guess must contain at least that many occurrences.
+ */
+export function checkHardMode1Constraints(guess, previousGuesses, previousEvaluations) {
+  const normalizedGuess = normalizeGuess(guess);
+  if (!isEnglishFiveLetterWord(normalizedGuess)) {
+    return { valid: false, message: "Enter a five-letter word." };
+  }
+
+  if (!Array.isArray(previousGuesses) || !Array.isArray(previousEvaluations)) {
+    return { valid: true };
+  }
+
+  const letterCountsInNewGuess = {};
+  for (const char of normalizedGuess) {
+    letterCountsInNewGuess[char] = (letterCountsInNewGuess[char] || 0) + 1;
+  }
+
+  // 1. Blue letters (correct in exact position)
+  for (let gIdx = 0; gIdx < previousGuesses.length; gIdx += 1) {
+    const prevWord = previousGuesses[gIdx];
+    const prevEval = previousEvaluations[gIdx];
+    if (!prevWord || !Array.isArray(prevEval)) continue;
+
+    for (let pos = 0; pos < 5; pos += 1) {
+      if (prevEval[pos] === "correct") {
+        const requiredLetter = prevWord[pos];
+        if (normalizedGuess[pos] !== requiredLetter) {
+          return {
+            valid: false,
+            message: `Position ${pos + 1} must be ${requiredLetter}.`
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Orange letters (wrong position: cannot be placed in the same position)
+  for (let gIdx = 0; gIdx < previousGuesses.length; gIdx += 1) {
+    const prevWord = previousGuesses[gIdx];
+    const prevEval = previousEvaluations[gIdx];
+    if (!prevWord || !Array.isArray(prevEval)) continue;
+
+    for (let pos = 0; pos < 5; pos += 1) {
+      if (prevEval[pos] === "wrong-position") {
+        const orangeLetter = prevWord[pos];
+        if (normalizedGuess[pos] === orangeLetter) {
+          return {
+            valid: false,
+            message: `Letter ${orangeLetter} cannot be in position ${pos + 1}.`
+          };
+        }
+      }
+    }
+  }
+
+  // 3. Orange / Blue presence and duplicate-letter counts
+  // For each letter, find the maximum confirmed count in any single previous guess
+  const maxConfirmedCounts = {};
+  for (let gIdx = 0; gIdx < previousGuesses.length; gIdx += 1) {
+    const prevWord = previousGuesses[gIdx];
+    const prevEval = previousEvaluations[gIdx];
+    if (!prevWord || !Array.isArray(prevEval)) continue;
+
+    const countsInThisGuess = {};
+    for (let pos = 0; pos < 5; pos += 1) {
+      if (prevEval[pos] === "correct" || prevEval[pos] === "wrong-position") {
+        const char = prevWord[pos];
+        countsInThisGuess[char] = (countsInThisGuess[char] || 0) + 1;
+      }
+    }
+
+    for (const [char, count] of Object.entries(countsInThisGuess)) {
+      maxConfirmedCounts[char] = Math.max(maxConfirmedCounts[char] || 0, count);
+    }
+  }
+
+  for (const [char, reqCount] of Object.entries(maxConfirmedCounts)) {
+    const actualCount = letterCountsInNewGuess[char] || 0;
+    if (actualCount < reqCount) {
+      if (reqCount === 1) {
+        return {
+          valid: false,
+          message: `Guess must contain ${char}.`
+        };
+      }
+      return {
+        valid: false,
+        message: `Guess must contain at least ${reqCount} of letter ${char}.`
+      };
+    }
+  }
+
+  return { valid: true };
 }

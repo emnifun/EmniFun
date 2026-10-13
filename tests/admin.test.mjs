@@ -57,6 +57,7 @@ async function setupTestDb() {
   db.exec(await readFile(new URL("../worker/migrations/0002_auth_security_fixes.sql", import.meta.url), "utf8"));
   db.exec(await readFile(new URL("../worker/migrations/0003_admin.sql", import.meta.url), "utf8"));
   db.exec(await readFile(new URL("../worker/migrations/0004_fivewink_plays.sql", import.meta.url), "utf8"));
+  db.exec(await readFile(new URL("../worker/migrations/0005_fivewink_modes.sql", import.meta.url), "utf8"));
   return db;
 }
 
