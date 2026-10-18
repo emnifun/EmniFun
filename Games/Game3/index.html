@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="EmniFun - Game 3.">
+  <title>Game 3 — EmniFun</title>
+  <link rel="stylesheet" href="../../css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="navbar" aria-label="Main navigation">
+      <div class="navbar-brand-group">
+        <button
+          class="mobile-menu-toggle"
+          id="mobile-menu-toggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded="false"
+          aria-controls="primary-navigation"
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+        <a class="brand" href="../../" data-view="home">EmniFun</a>
+      </div>
+      <div class="nav-links" id="primary-navigation">
+        <button class="nav-link" data-view="home">Home</button>
+        <button class="nav-link active" data-view="games">Games</button>
+        <button class="nav-link" data-view="statistics">Statistics</button>
+        <button class="nav-link" data-view="archive">Archive</button>
+        <a class="nav-link" id="nav-admin" href="https://emnifun.github.io/EmniFun/admin/" style="display: none; text-decoration: none;">Admin</a>
+        <button class="nav-link" data-nav-auth="true" data-view="login">Login</button>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section id="home" class="view" aria-labelledby="home-title">
+      <div class="hero">
+        <h1 id="home-title">Welcome to EmniFun</h1>
+        <p>A simple home for word and puzzle games. FiveWink is now playable as a functional prototype.</p>
+        <p>Wink your way to the word.</p>
+        <button class="button" data-go-games>Explore Games</button>
+      </div>
+    </section>
+
+    <section id="games" class="view active game-playing" aria-labelledby="games-title">
+      <div class="section-heading">
+        <h2 id="games-title">Games</h2>
+        <p>Three independent game slots, with FiveWink currently playable.</p>
+      </div>
+      <div id="game-area">
+        <div class="placeholder"><h3>Game 3</h3><p>Coming Soon</p></div>
+      </div>
+    </section>
+
+    <section id="statistics" class="view" aria-labelledby="statistics-title">
+      <div class="section-heading">
+        <h2 id="statistics-title">Statistics</h2>
+        <p>FiveWink results are tracked in the current browser session. Backend persistence comes later.</p>
+      </div>
+      <div id="statistics-content"></div>
+    </section>
+
+    <section id="archive" class="view" aria-labelledby="archive-title">
+      <div class="placeholder">
+        <h2 id="archive-title">Puzzle Archive</h2>
+        <p>The future archive will manage draft, scheduled, published, and archived puzzles.</p>
+        <p>This prototype uses one local published FiveWink puzzle and does not expose an editable public archive.</p>
+      </div>
+    </section>
+
+    <section id="login" class="view" aria-labelledby="login-title">
+      <div id="login-content">
+        <div class="placeholder">
+          <h2 id="login-title">Loading authentication…</h2>
+          <p>Preparing secure Google sign-in.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="account" class="view" aria-labelledby="account-title">
+      <div id="account-content">
+        <div class="placeholder">
+          <h2 id="account-title">Loading account…</h2>
+          <p>Preparing your EmniFun account.</p>
+        </div>
+      </div>
+    </section>
+    <section id="about" class="view" aria-labelledby="about-title">
+      <div class="page-shell">
+        <div class="page-header">
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a href="../../" class="back-link" data-view="home">← Back to Home</a>
+          </nav>
+          <h1 id="about-title">About EmniFun</h1>
+        </div>
+        <div class="info-card">
+          <p>EmniFun is a dedicated platform for word and puzzle games.</p>
+          <p>Detailed information about the platform, its background, and future updates will be published here in an upcoming release.</p>
+          <div class="page-actions">
+            <a href="../../" class="button secondary" data-view="home">Return to Home</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="rules" class="view" aria-labelledby="rules-title">
+      <div class="page-shell">
+        <div class="page-header">
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a href="../../" class="back-link" data-view="home">← Back to Home</a>
+          </nav>
+          <h1 id="rules-title">Game Rules</h1>
+        </div>
+        <div class="info-card">
+          <p>General rules, solving tips, and gameplay instructions for EmniFun puzzle games will be published here in an upcoming update.</p>
+          <p>For FiveWink, mode-specific rules and instructions can also be viewed directly in-game using the information button beside the mode selector.</p>
+          <div class="page-actions">
+            <a href="../../" class="button secondary" data-view="home">Return to Home</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="privacy" class="view" aria-labelledby="privacy-title">
+      <div class="page-shell">
+        <div class="page-header">
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a href="../../" class="back-link" data-view="home">← Back to Home</a>
+          </nav>
+          <h1 id="privacy-title">Privacy Policy</h1>
+        </div>
+        <div class="info-card">
+          <p>The EmniFun Privacy Policy is currently pending review and publication.</p>
+          <p>Official data handling disclosures, privacy practices, and policy details will be published here prior to general release.</p>
+          <div class="page-actions">
+            <a href="../../" class="button secondary" data-view="home">Return to Home</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="contact" class="view" aria-labelledby="contact-title">
+      <div class="page-shell">
+        <div class="page-header">
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a href="../../" class="back-link" data-view="home">← Back to Home</a>
+          </nav>
+          <h1 id="contact-title">Contact</h1>
+        </div>
+        <div class="info-card">
+          <p>Official contact methods and communication channels for EmniFun will be added here in a future update.</p>
+          <p>Support inquiries and feedback channels will be announced once finalized.</p>
+          <div class="page-actions">
+            <a href="../../" class="button secondary" data-view="home">Return to Home</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <strong>EmniFun</strong> · FiveWink functional prototype
+      </div>
+      <nav class="footer-nav" aria-label="Footer navigation">
+        <a class="footer-link" href="../../about/" data-view="about">About</a>
+        <span class="footer-sep" aria-hidden="true">·</span>
+        <a class="footer-link" href="../../rules/" data-view="rules">Rules</a>
+        <span class="footer-sep" aria-hidden="true">·</span>
+        <a class="footer-link" href="../../privacy/" data-view="privacy">Privacy Policy</a>
+        <span class="footer-sep" aria-hidden="true">·</span>
+        <a class="footer-link" href="../../contact/" data-view="contact">Contact</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="../../js/app.js"></script>
+</body>
+</html>

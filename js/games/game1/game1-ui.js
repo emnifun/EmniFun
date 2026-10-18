@@ -1,0 +1,913 @@
+import { GAME1_ID } from "./game1-data.js";
+import {
+  GAME1_CONFIG,
+  GAME1_RESULT,
+  FIVEWINK_MODES,
+  ALLOWED_GAMEPLAY_MODES,
+  buildPlayerHistoryRecord,
+  createGame1State,
+  getNextNormalAttemptIndex,
+  sanitizeGuessInput,
+  isEnglishFiveLetterWord,
+  applyNormalGuessResult,
+  applySeventhGuessResult,
+  applyClueResult,
+  applySeventhSkipResult,
+  restoreGame1State
+} from "./game1-logic.js";
+import {
+  getPublishedPuzzleForToday
+} from "../../services/puzzle-service.js";
+import {
+  submitFiveWinkGuess,
+  useFiveWinkClue,
+  skipFiveWinkSeventh,
+  setFiveWinkMode
+} from "../../services/api.js";
+import { recordGameResult } from "../../statistics/statistics.js";
+import { saveGameResult } from "../../services/api.js";
+import { playFiveWinkSound } from "./game1-sound.js";
+
+export const MODE_INFO = Object.freeze({
+  default: {
+    id: "default",
+    name: "Standard",
+    description: "Classic FiveWink. Clues are available after attempts, and you are free to test any five-letter words on future guesses.",
+    available: true
+  },
+  hard1: {
+    id: "hard1",
+    name: "Hard Mode: Strict",
+    description: "Strict mode. Blue letters must remain in their confirmed positions. Orange letters must be included in future guesses and cannot be placed where they were already orange. Clues are completely disabled.",
+    available: true
+  },
+  hard2: {
+    id: "hard2",
+    name: "Hard Mode: Mindbender",
+    description: "Coming Soon. An upcoming challenge mode with mind-bending deduction rules.",
+    available: false
+  },
+  hard3: {
+    id: "hard3",
+    name: "Hard Mode: Expert",
+    description: "Coming Soon. An upcoming master-tier mode for seasoned puzzle solvers.",
+    available: false
+  }
+});
+
+const PREF_KEY_ENABLED = "emnifun_fivewink_mode_default_enabled";
+const PREF_KEY_MODE = "emnifun_fivewink_mode_preference";
+
+export function getLocalModePreference() {
+  try {
+    const enabled = localStorage.getItem(PREF_KEY_ENABLED) === "true";
+    const mode = localStorage.getItem(PREF_KEY_MODE);
+    if (enabled && (mode === "default" || mode === "hard1")) {
+      return { enabled: true, mode };
+    }
+    return { enabled: false, mode: "default" };
+  } catch {
+    return { enabled: false, mode: "default" };
+  }
+}
+
+export function saveLocalModePreference(enabled, mode) {
+  try {
+    localStorage.setItem(PREF_KEY_ENABLED, enabled ? "true" : "false");
+    if (enabled && (mode === "default" || mode === "hard1")) {
+      localStorage.setItem(PREF_KEY_MODE, mode);
+    }
+  } catch {
+    // Ignore storage issues in private modes
+  }
+}
+
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+export async function renderGame1(container) {
+  document.title = "FiveWink — EmniFun";
+  container.innerHTML =
+    '<div class="placeholder"><h2>Loading FiveWink…</h2><p>Loading the current published puzzle.</p></div>';
+
+  let puzzle;
+
+  try {
+    puzzle = await getPublishedPuzzleForToday();
+  } catch (error) {
+    const isAlreadyPlayed = Boolean(error?.alreadyPlayed) || error?.message?.toLowerCase().includes("already played");
+    if (error?.completedData) {
+      const completedPuzzle = {
+        id: error.completedData.puzzleId,
+        game: "game1",
+        date: error.completedData.date,
+        clues: error.completedData.clues,
+        completed: true,
+        alreadyPlayed: true,
+        answer: error.completedData.answer,
+        result: error.completedData.result,
+        attempts: error.completedData.attempts,
+        guesses: error.completedData.guesses,
+        evaluations: error.completedData.evaluations,
+        cluesState: error.completedData.cluesState,
+        cluesUsed: error.completedData.cluesUsed,
+        seventhGuess: error.completedData.seventhGuess,
+        seventhEvaluation: error.completedData.seventhEvaluation,
+        status: "finished",
+        mode: error.completedData.mode || "default",
+        modeLocked: true
+      };
+      container.innerHTML = `
+        <div class="placeholder">
+          <h2>Already Played</h2>
+          <p>You have already played this FiveWink puzzle. Check back for the next puzzle!</p>
+          <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; justify-content: center;">
+            <button id="btn-view-completed" class="button" type="button">View Completed Puzzle</button>
+            <button id="btn-completed-back" class="button secondary" type="button">Back to Games</button>
+          </div>
+        </div>
+      `;
+      container.querySelector("#btn-completed-back")?.addEventListener("click", () => {
+        document.title = "EmniFun";
+        container.dispatchEvent(new CustomEvent("game1-back"));
+      });
+      container.querySelector("#btn-view-completed")?.addEventListener("click", () => {
+        renderGame1Shell(container, completedPuzzle);
+      });
+      return;
+    }
+    container.innerHTML =
+      '<div class="placeholder"><h2>' +
+      (isAlreadyPlayed ? "Already Played" : "FiveWink could not load") +
+      '</h2><p>' +
+      (error?.message || "Puzzle data could not be loaded.") +
+      '</p></div>';
+    return;
+  }
+
+  if (!puzzle) {
+    container.innerHTML =
+      '<div class="placeholder"><h2>No puzzle available</h2><p>There is no published FiveWink puzzle for today.</p></div>';
+    return;
+  }
+
+  if (puzzle.completed) {
+    container.innerHTML = `
+      <div class="placeholder">
+        <h2>Already Played</h2>
+        <p>You have already played this FiveWink puzzle. Check back for the next puzzle!</p>
+        <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; justify-content: center;">
+          <button id="btn-view-completed" class="button" type="button">View Completed Puzzle</button>
+          <button id="btn-completed-back" class="button secondary" type="button">Back to Games</button>
+        </div>
+      </div>
+    `;
+    container.querySelector("#btn-completed-back")?.addEventListener("click", () => {
+      document.title = "EmniFun";
+      container.dispatchEvent(new CustomEvent("game1-back"));
+    });
+    container.querySelector("#btn-view-completed")?.addEventListener("click", () => {
+      renderGame1Shell(container, puzzle);
+    });
+    return;
+  }
+
+  renderGame1Shell(container, puzzle);
+}
+
+function renderGame1Shell(container, puzzle) {
+  const state = createGame1State();
+  if (puzzle.resumed || puzzle.completed || puzzle.modeLocked) {
+    restoreGame1State(state, puzzle);
+  } else {
+    const pref = getLocalModePreference();
+    if (pref.enabled && (pref.mode === "default" || pref.mode === "hard1")) {
+      state.mode = pref.mode;
+      if (puzzle.gameToken && state.mode !== (puzzle.mode || "default")) {
+        setFiveWinkMode({ puzzleId: puzzle.id, mode: state.mode, gameToken: puzzle.gameToken }).catch(() => {});
+      }
+    } else if (puzzle.mode) {
+      state.mode = puzzle.mode;
+    }
+  }
+  let currentInput = "";
+  let gameToken = puzzle.gameToken;
+  let requestInFlight = false;
+
+  container.innerHTML = `
+    <div class="game-shell" tabindex="0">
+      <div class="game-header">
+        <div>
+          <p class="eyebrow">Daily Puzzle · ${puzzle.date}</p>
+          <div class="game-title-row">
+            <h2>FiveWink</h2>
+            <button class="mode-bulb-btn${state.mode === "hard1" ? " mode-strict" : ""}" id="game1-mode-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Game mode selector">
+              <svg class="mode-bulb-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 18h6"></path>
+                <path d="M10 22h4"></path>
+                <path d="M12 2a7 7 0 0 0-7 7c0 2.5 1.5 4.5 3 6h8c1.5-1.5 3-3.5 3-6a7 7 0 0 0-7-7z"></path>
+              </svg>
+              <span id="game1-mode-btn-label">${MODE_INFO[state.mode]?.name || "Standard"}</span>
+            </button>
+          </div>
+          <p>Wink your way to the word.</p>
+        </div>
+        <button class="button secondary" type="button" id="game1-back">Back to Games</button>
+      </div>
+      <div id="game1-mode-modal-backdrop" class="mode-modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="mode-modal-title">
+        <div class="mode-modal">
+          <div class="mode-modal-header">
+            <h3 id="mode-modal-title">Game Mode</h3>
+            <button class="mode-modal-close" id="game1-mode-modal-close" type="button" aria-label="Close dialog">&times;</button>
+          </div>
+          <div class="mode-modal-body">
+            <div id="game1-mode-locked-banner" class="mode-locked-banner hidden">
+              The mode for this puzzle is locked and cannot be changed.
+            </div>
+            <div class="mode-options-list" id="game1-mode-options-list"></div>
+            <div class="mode-pref-row">
+              <label class="mode-pref-label">
+                <input type="checkbox" id="game1-mode-pref-checkbox" />
+                <span>Use this mode by default for future puzzles</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="game1-layout">
+        <div class="game1-play-area">
+          <div id="game1-message" class="game-message" aria-live="polite"></div>
+          <div id="game1-board" class="game-board"></div>
+          <div id="game1-keyboard" class="keyboard" aria-label="On-screen keyboard"></div>
+        </div>
+        <details id="game1-clues-panel" class="game1-clues-panel">
+          <summary>Clues</summary>
+          <div id="game1-clues" class="clue-list"></div>
+        </details>
+      </div>
+      <div id="game1-result"></div>
+      <button class="button secondary hidden" id="game1-see-why" type="button">See Why</button>
+      <div id="game1-explanation"></div>
+    </div>
+  `;
+
+  const root = container.querySelector(".game-shell");
+  const playArea = container.querySelector(".game1-play-area");
+  const board = container.querySelector("#game1-board");
+  const clues = container.querySelector("#game1-clues");
+  const keyboard = container.querySelector("#game1-keyboard");
+  const cluesPanel = container.querySelector("#game1-clues-panel");
+  const messageBox = container.querySelector("#game1-message");
+  const resultBox = container.querySelector("#game1-result");
+  const seeWhyButton = container.querySelector("#game1-see-why");
+  const modeBtn = container.querySelector("#game1-mode-btn");
+  const modeBtnLabel = container.querySelector("#game1-mode-btn-label");
+  const modeModalBackdrop = container.querySelector("#game1-mode-modal-backdrop");
+  const modeModalClose = container.querySelector("#game1-mode-modal-close");
+  const modeLockedBanner = container.querySelector("#game1-mode-locked-banner");
+  const modeOptionsList = container.querySelector("#game1-mode-options-list");
+  const modePrefCheckbox = container.querySelector("#game1-mode-pref-checkbox");
+  let messageTimeout = null;
+
+  function syncCluePanelForViewport() {
+    cluesPanel.open = !window.matchMedia("(max-width: 800px)").matches;
+  }
+
+  syncCluePanelForViewport();
+  const clueMediaQuery = window.matchMedia("(max-width: 800px)");
+  const handleClueViewportChange = () => syncCluePanelForViewport();
+  clueMediaQuery.addEventListener?.("change", handleClueViewportChange);
+
+  function showMessage(message = "", temporary = false) {
+    if (messageTimeout) {
+      clearTimeout(messageTimeout);
+      messageTimeout = null;
+    }
+
+    messageBox.textContent = message;
+    messageBox.classList.toggle("temporary", temporary);
+
+    if (temporary && message) {
+      messageTimeout = setTimeout(() => {
+        messageBox.textContent = "";
+        messageBox.classList.remove("temporary");
+        messageTimeout = null;
+      }, 1700);
+    }
+  }
+
+  function focusGame() {
+    root.focus({ preventScroll: true });
+  }
+
+  function syncModeControls() {
+    if (modeBtnLabel) {
+      modeBtnLabel.textContent = MODE_INFO[state.mode]?.name || "Standard";
+    }
+    if (modeBtn) {
+      modeBtn.classList.toggle("mode-strict", state.mode === "hard1");
+    }
+    if (modeLockedBanner) {
+      modeLockedBanner.classList.toggle("hidden", !state.modeLocked);
+    }
+    renderModeCards();
+  }
+
+  function renderModeCards() {
+    if (!modeOptionsList) return;
+    const modes = [MODE_INFO.default, MODE_INFO.hard1, MODE_INFO.hard2, MODE_INFO.hard3];
+    modeOptionsList.innerHTML = modes.map((info) => {
+      const isSelected = state.mode === info.id;
+      const isPlaceholder = !info.available;
+      const isDisabled = isPlaceholder || state.modeLocked;
+      const cardClass = `mode-card${isSelected ? " selected" : ""}${isDisabled ? " disabled" : ""}`;
+      const badge = isPlaceholder
+        ? '<span class="mode-pill coming-soon">Coming Soon</span>'
+        : isSelected
+          ? '<span class="mode-pill selected">Active</span>'
+          : '';
+
+      return `
+        <div class="${cardClass}" data-mode="${info.id}">
+          <div class="mode-card-header">
+            <label class="mode-card-title-group">
+              <input
+                type="radio"
+                name="game1-mode-choice"
+                value="${info.id}"
+                ${isSelected ? "checked" : ""}
+                ${isDisabled ? "disabled" : ""}
+              />
+              <span class="mode-card-title">${info.name}</span>
+              ${badge}
+            </label>
+            <button
+              class="mode-info-btn"
+              type="button"
+              data-info-for="${info.id}"
+              aria-label="Info for ${info.name}"
+              aria-expanded="false"
+            >?</button>
+          </div>
+          <div class="mode-info-box hidden" id="mode-info-box-${info.id}">
+            ${info.description}
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    modeOptionsList.querySelectorAll('input[type="radio"]').forEach((radio) => {
+      radio.addEventListener("change", async (e) => {
+        const targetMode = e.target.value;
+        if (state.modeLocked || targetMode === state.mode) return;
+        if (!ALLOWED_GAMEPLAY_MODES.has(targetMode)) return;
+
+        requestInFlight = true;
+        try {
+          if (puzzle.gameToken) {
+            const res = await setFiveWinkMode({
+              puzzleId: puzzle.id,
+              mode: targetMode,
+              gameToken
+            });
+            if (res.gameToken) gameToken = res.gameToken;
+            if (res.mode) state.mode = res.mode;
+            if (res.modeLocked !== undefined) state.modeLocked = res.modeLocked;
+          } else {
+            state.mode = targetMode;
+          }
+
+          if (modePrefCheckbox?.checked) {
+            saveLocalModePreference(true, state.mode);
+          }
+
+          syncModeControls();
+          renderClues();
+          showMessage(`Mode set to ${MODE_INFO[state.mode].name}.`, true);
+        } catch (err) {
+          showMessage(err?.message || "Could not update mode.");
+          syncModeControls();
+        } finally {
+          requestInFlight = false;
+        }
+      });
+    });
+
+    modeOptionsList.querySelectorAll(".mode-info-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const modeId = btn.dataset.infoFor;
+        const box = modeOptionsList.querySelector(`#mode-info-box-${modeId}`);
+        if (!box) return;
+        const isHidden = box.classList.contains("hidden");
+        box.classList.toggle("hidden", !isHidden);
+        btn.setAttribute("aria-expanded", String(isHidden));
+      });
+    });
+  }
+
+  const currentPref = getLocalModePreference();
+  if (modePrefCheckbox) {
+    modePrefCheckbox.checked = currentPref.enabled;
+    modePrefCheckbox.addEventListener("change", () => {
+      saveLocalModePreference(modePrefCheckbox.checked, state.mode);
+    });
+  }
+
+  const handleDocumentEscape = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeModeModal();
+    }
+  };
+
+  function openModeModal() {
+    if (!modeModalBackdrop) return;
+    syncModeControls();
+    modeModalBackdrop.classList.remove("hidden");
+    modeBtn?.setAttribute("aria-expanded", "true");
+    document.addEventListener("keydown", handleDocumentEscape);
+  }
+
+  function closeModeModal() {
+    if (!modeModalBackdrop) return;
+    document.removeEventListener("keydown", handleDocumentEscape);
+    modeModalBackdrop.classList.add("hidden");
+    modeBtn?.setAttribute("aria-expanded", "false");
+    focusGame();
+  }
+
+  modeBtn?.addEventListener("click", openModeModal);
+  modeModalClose?.addEventListener("click", closeModeModal);
+  modeModalBackdrop?.addEventListener("click", (e) => {
+    if (e.target === modeModalBackdrop) {
+      closeModeModal();
+    }
+  });
+
+  function syncKeyboardVisibility() {
+    keyboard.classList.toggle("hidden", state.status === "finished");
+  }
+
+  function finishGame() {
+    const history = buildPlayerHistoryRecord(state, puzzle);
+    recordGameResult(GAME1_ID, history);
+    void saveGameResult(GAME1_ID, history);
+    renderResult();
+    syncKeyboardVisibility();
+  }
+
+  function renderResult() {
+    const seventhGuess = state.guesses[GAME1_CONFIG.normalAttempts];
+    const seventhGuessWasRight =
+      state.result === GAME1_RESULT.FAILED_CLOSE &&
+      Boolean(seventhGuess);
+
+    const labels = {
+      [GAME1_RESULT.SOLVED]: "Solved!",
+      [GAME1_RESULT.FAILED_CLOSE]: seventhGuessWasRight ? "7th Guess Was Right!" : "Failed — Close",
+      [GAME1_RESULT.FAILED_HARD]: "Failed — Hard"
+    };
+
+    const details = {
+      [GAME1_RESULT.SOLVED]: "Solved within the six normal attempts.",
+      [GAME1_RESULT.FAILED_CLOSE]: seventhGuessWasRight
+        ? "Your 7th guess was right — but it does not count as a solve."
+        : "The seventh guess was close, but it does not count as a solve.",
+      [GAME1_RESULT.FAILED_HARD]: "The puzzle was not solved within the normal attempts."
+    };
+
+    const modeName = MODE_INFO[state.mode]?.name || "Standard";
+
+    resultBox.innerHTML = `
+      <div class="result-card result-${state.result.toLowerCase()}">
+        <h3>${labels[state.result]}</h3>
+        <p class="result-mode-tag">Mode: <strong>${modeName}</strong></p>
+        <p>${details[state.result]}</p>
+        <p>The answer was: <strong>${state.answer}</strong></p>
+      </div>`;
+    seeWhyButton.classList.remove("hidden");
+  }
+
+  async function submitNormal() {
+    if (state.status !== "playing" || requestInFlight) return;
+
+    if (currentInput.length !== 5) {
+      showMessage("Enter a five-letter word.");
+      return;
+    }
+
+    const guess = currentInput;
+
+    currentInput = "";
+    requestInFlight = true;
+
+    try {
+      const result = await submitFiveWinkGuess({
+        puzzleId: puzzle.id,
+        guess,
+        gameToken,
+        mode: state.mode
+      });
+
+      gameToken = result.gameToken;
+      const applied = applyNormalGuessResult(state, guess, result);
+
+      if (!applied.ok) {
+        throw new Error(applied.message);
+      }
+
+      syncModeControls();
+      showMessage(result.seventhStage ? "You used all six normal attempts." : "");
+      renderBoard();
+      renderClues();
+      renderKeyboard();
+
+      if (result.solved) finishGame();
+      focusGame();
+    } catch (error) {
+      if (error?.duplicate) {
+        currentInput = "";
+        showMessage(error.message, true);
+        renderBoard();
+      } else {
+        currentInput = guess;
+        showMessage(error?.message || "The guess could not be checked.");
+        renderBoard();
+      }
+
+      focusGame();
+    } finally {
+      requestInFlight = false;
+    }
+  }
+  async function submitSeventh() {
+    if (state.status !== "awaiting-seventh" || requestInFlight) return;
+
+    if (currentInput.length !== 5) {
+      showMessage("Enter a five-letter word.");
+      return;
+    }
+
+    const guess = currentInput;
+
+    currentInput = "";
+    requestInFlight = true;
+
+    try {
+      const result = await submitFiveWinkGuess({
+        puzzleId: puzzle.id,
+        guess,
+        gameToken,
+        mode: state.mode
+      });
+
+      gameToken = result.gameToken;
+      const applied = applySeventhGuessResult(state, guess, result);
+
+      if (!applied.ok) {
+        throw new Error(applied.message);
+      }
+
+      syncModeControls();
+      showMessage(
+        result.result === GAME1_RESULT.FAILED_CLOSE
+          ? "Your 7th guess was right — but it does not count as a solve."
+          : "Your final guess was not close enough."
+      );
+      renderBoard();
+      renderKeyboard();
+      finishGame();
+      focusGame();
+    } catch (error) {
+      if (error?.duplicate) {
+        currentInput = "";
+        showMessage(error.message, true);
+        renderBoard();
+      } else {
+        currentInput = guess;
+        showMessage(error?.message || "The final guess could not be checked.");
+        renderBoard();
+      }
+
+      focusGame();
+    } finally {
+      requestInFlight = false;
+    }
+  }
+  async function skipSeventh() {
+    if (state.status !== "awaiting-seventh" || requestInFlight) return;
+
+    requestInFlight = true;
+
+    try {
+      const result = await skipFiveWinkSeventh({
+        puzzleId: puzzle.id,
+        gameToken
+      });
+
+      gameToken = result.gameToken;
+      const applied = applySeventhSkipResult(state, result);
+
+      if (!applied.ok) {
+        throw new Error(applied.message);
+      }
+
+      syncModeControls();
+
+      currentInput = "";
+      showMessage("You didn't take the final guess. Result: Failed — Hard.");
+      renderBoard();
+      finishGame();
+      focusGame();
+    } catch (error) {
+      showMessage(error?.message || "The final guess could not be skipped.");
+      focusGame();
+    } finally {
+      requestInFlight = false;
+    }
+  }
+  function renderBoard() {
+    const rows = Array.from({ length: GAME1_CONFIG.normalAttempts }, (_, index) => {
+      const guess = state.guesses[index] || "";
+      const feedback = state.feedback[index];
+      const isCurrent = state.status === "playing" && index === getNextNormalAttemptIndex(state);
+
+      const cells = Array.from({ length: 5 }, (_, letterIndex) => {
+        const value = guess[letterIndex] || (isCurrent ? currentInput[letterIndex] || "" : "");
+        const status = feedback?.[letterIndex] || "";
+        return `<span class="letter-cell ${status}">${value}</span>`;
+      }).join("");
+
+      return `<div class="game-row${isCurrent ? " active" : ""}" aria-current="${isCurrent ? "true" : "false"}">${cells}</div>`;
+    }).join("");
+
+    const seventh =
+      (state.status === "awaiting-seventh" || state.seventhGuessUsed)
+        ? `
+          <div class="seventh-stage">
+            <div class="close-banner">${
+              state.result === GAME1_RESULT.FAILED_CLOSE &&
+              state.guesses[GAME1_CONFIG.normalAttempts]
+                ? "Your 7th guess was right — but it does not count as a solve."
+                : "You failed — but are you close?"
+            }</div>
+            <div class="game-row seventh-row${state.status === "awaiting-seventh" ? " active" : ""}" aria-current="${state.status === "awaiting-seventh" ? "true" : "false"}">
+              ${Array.from({ length: 5 }, (_, index) => {
+                const value =
+                  state.guesses[GAME1_CONFIG.normalAttempts]?.[index] ||
+                  (state.status === "awaiting-seventh" ? currentInput[index] || "" : "");
+                const status = state.feedback[GAME1_CONFIG.normalAttempts]?.[index] || "";
+                return `<span class="letter-cell ${status}">${value}</span>`;
+              }).join("")}
+            </div>
+            ${state.status === "awaiting-seventh" ? `
+            <div class="seventh-actions">
+              <button class="button" id="seventh-submit" type="button">Submit 7th Guess</button>
+              <button class="button secondary" id="seventh-skip" type="button">Skip Final Guess</button>
+            </div>` : ""}
+          </div>`
+        : "";
+
+    board.innerHTML = rows + seventh;
+    board.querySelector("#seventh-submit")?.addEventListener("click", submitSeventh);
+    board.querySelector("#seventh-skip")?.addEventListener("click", skipSeventh);
+  }
+
+  function renderClues() {
+    if (state.mode === "hard1") {
+      clues.innerHTML = `
+        <div class="clue-box disabled-mode">
+          <strong>Clues Disabled</strong>
+          <span>Clues are not available in Hard Mode: Strict.</span>
+        </div>`;
+      return;
+    }
+
+    clues.innerHTML = state.clues.map((status, index) => {
+      const number = index + 1;
+      const currentAttemptIndex = getNextNormalAttemptIndex(state);
+      const action =
+        status === "available" &&
+        state.status === "playing" &&
+        index === currentAttemptIndex
+          ? `<button class="button secondary clue-action" data-clue="${number}" type="button">Use Clue #${number}</button>`
+          : "";
+
+      const text =
+        status === "used" ? puzzle.clues[index] :
+        status === "skipped" ? "Clue skipped" :
+        "Clue not revealed";
+
+      return `
+        <div class="clue-box ${status}">
+          <strong>Clue #${number}</strong>
+          <span>${text}</span>
+          ${action}
+        </div>`;
+    }).join("");
+
+    clues.querySelectorAll(".clue-action").forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (requestInFlight) return;
+
+        const clueNumber = Number(button.dataset.clue);
+        requestInFlight = true;
+        button.disabled = true;
+
+        try {
+          const result = await useFiveWinkClue({
+            puzzleId: puzzle.id,
+            clueNumber,
+            gameToken
+          });
+
+          gameToken = result.gameToken;
+          const applied = applyClueResult(state, clueNumber);
+
+          if (!applied.ok) {
+            throw new Error(applied.message);
+          }
+
+          syncModeControls();
+          showMessage("Clue revealed.");
+          renderBoard();
+          renderClues();
+          focusGame();
+        } catch (error) {
+          showMessage(error?.message || "The clue could not be revealed.");
+          focusGame();
+        } finally {
+          requestInFlight = false;
+        }
+      });
+    });
+  }
+
+  function getKeyboardLetterStates() {
+    const priority = {
+      absent: 1,
+      "wrong-position": 2,
+      correct: 3
+    };
+    const states = {};
+
+    state.guesses.forEach((guess, attemptIndex) => {
+      const feedback = state.feedback[attemptIndex];
+      if (!guess || !Array.isArray(feedback)) return;
+
+      feedback.forEach((status, letterIndex) => {
+        const letter = guess[letterIndex];
+        if (!letter || !priority[status]) return;
+
+        const current = states[letter];
+        if (!current || priority[status] > priority[current]) {
+          states[letter] = status;
+        }
+      });
+    });
+
+    return states;
+  }
+
+  function renderKeyboard() {
+    const letterStates = getKeyboardLetterStates();
+    const rows = [
+      ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+      ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+      ["ENTER", "Z", "X", "C", "V", "B", "N", "M", "BACKSPACE"]
+    ];
+
+    const renderKey = (key) => {
+      const isSpecial = key === "ENTER" || key === "BACKSPACE";
+      const label = key === "BACKSPACE" ? "⌫" : key === "ENTER" ? "Enter" : key;
+      const status = letterStates[key] || "";
+      const specialClass = isSpecial ? " special" : "";
+      return `<button type="button" class="key${specialClass} ${status}" data-key="${key}">${label}</button>`;
+    };
+
+    keyboard.innerHTML = rows.map((row, index) =>
+      `<div class="keyboard-row keyboard-row-${index + 1}">${row.map(renderKey).join("")}</div>`
+    ).join("");
+  }
+
+  function addInputKey(key) {
+    if (state.status !== "playing" && state.status !== "awaiting-seventh") return;
+
+    if (key === "BACKSPACE") {
+      currentInput = currentInput.slice(0, -1);
+    } else if (key === "ENTER") {
+      state.status === "playing" ? submitNormal() : submitSeventh();
+      return;
+    } else if (/^[A-Z]$/.test(key) && currentInput.length < 5) {
+      currentInput += key;
+    }
+
+    renderBoard();
+  }
+
+  keyboard.addEventListener("click", (event) => {
+    const key = event.target.closest("[data-key]")?.dataset.key;
+    if (!key) return;
+
+    if (key === "ENTER") {
+      playFiveWinkSound("enter");
+    } else if (key === "BACKSPACE") {
+      playFiveWinkSound("backspace");
+    } else {
+      playFiveWinkSound("key");
+    }
+
+    addInputKey(key);
+    focusGame();
+  });
+
+  root.addEventListener("keydown", (event) => {
+    if (modeModalBackdrop && !modeModalBackdrop.classList.contains("hidden")) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeModeModal();
+      }
+      return;
+    }
+
+    if (requestInFlight) return;
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      state.status === "playing" ? submitNormal() : submitSeventh();
+      return;
+    }
+
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      addInputKey("BACKSPACE");
+      return;
+    }
+
+    if (/^[a-zA-Z]$/.test(event.key)) {
+      event.preventDefault();
+      addInputKey(event.key.toUpperCase());
+    }
+  });
+
+  root.addEventListener("paste", (event) => {
+    event.preventDefault();
+    const pasted = event.clipboardData?.getData("text") || "";
+    currentInput = sanitizeGuessInput(pasted);
+    renderBoard();
+    focusGame();
+  });
+
+  seeWhyButton.addEventListener("click", () => {
+    if (state.status !== "finished") return;
+
+    const seventhGuessWasRight =
+      state.result === GAME1_RESULT.FAILED_CLOSE;
+
+    const context =
+      state.result === GAME1_RESULT.SOLVED
+        ? "You solved the puzzle. Here is the clue-to-answer explanation."
+        : seventhGuessWasRight
+          ? "Your 7th guess matched the answer, but the seventh guess does not count as a solve."
+          : state.result === GAME1_RESULT.FAILED_CLOSE
+            ? "You were close, but the seventh guess remains a failure result."
+            : "The puzzle ended as a hard failure. Here is the full explanation.";
+
+    container.querySelector("#game1-explanation").innerHTML = `
+      <div class="explanation-card" id="explanation-card">
+        <h3>See Why</h3>
+        <p>${context}</p>
+        <p><strong>Answer:</strong> ${state.answer}</p>
+        ${puzzle.clues.map((clue, index) =>
+          `<p><strong>Clue #${index + 1}:</strong> ${clue}</p>`
+        ).join("")}
+      </div>`;
+
+    seeWhyButton.classList.add("hidden");
+  });
+
+  container.querySelector("#game1-back").addEventListener("click", () => {
+    document.removeEventListener("keydown", handleDocumentEscape);
+    document.title = "EmniFun";
+    container.dispatchEvent(new CustomEvent("game1-back"));
+  });
+
+  renderBoard();
+  renderClues();
+  syncModeControls();
+  if (state.status === "finished") {
+    renderResult();
+    syncKeyboardVisibility();
+  } else {
+    renderKeyboard();
+    focusGame();
+  }
+
+  // Position the page once when FiveWink first opens. Later board/keyboard
+  // rerenders do not call this again, so normal player scrolling is preserved.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      playArea.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
+    });
+  });
+}
