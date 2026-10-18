@@ -178,3 +178,48 @@ test("placeholder content integrity: neutral phrasing and scope protection", asy
   // Rules: must mention in-game mode selector option for FiveWink
   assert.match(rulesHtml, /mode selector/i);
 });
+
+test("page shell layout: vertical height consistency and sticky footer structure in shared CSS", async () => {
+  const css = await readFile(new URL("../css/style.css", import.meta.url), "utf8");
+
+  // Body must have full viewport min-height and flex-column layout
+  assert.match(css, /body\{[^}]*min-height:100vh[^}]*\}/);
+  assert.match(css, /body\{[^}]*min-height:100dvh[^}]*\}/);
+  assert.match(css, /body\{[^}]*display:flex[^}]*\}/);
+  assert.match(css, /body\{[^}]*flex-direction:column[^}]*\}/);
+
+  // Main must expand to fill remaining vertical space
+  assert.match(css, /main\{[^}]*flex:1 0 auto[^}]*\}/);
+  assert.match(css, /main\{[^}]*display:flex[^}]*\}/);
+  assert.match(css, /main\{[^}]*flex-direction:column[^}]*\}/);
+
+  // Active view must also be a flexible column
+  assert.match(css, /\.view\.active\{[^}]*display:flex[^}]*\}/);
+  assert.match(css, /\.view\.active\{[^}]*flex-direction:column[^}]*\}/);
+  assert.match(css, /\.view\.active\{[^}]*flex:1 0 auto[^}]*\}/);
+
+  // page-shell must expand as a flex column
+  assert.match(css, /\.page-shell\{[^}]*display:flex[^}]*\}/);
+  assert.match(css, /\.page-shell\{[^}]*flex-direction:column[^}]*\}/);
+  assert.match(css, /\.page-shell\{[^}]*flex:1 0 auto[^}]*\}/);
+});
+
+test("footer navigation: responsive mobile wrapping consistency across informational pages", async () => {
+  const css = await readFile(new URL("../css/style.css", import.meta.url), "utf8");
+
+  // Desktop footer navigation structure
+  assert.match(css, /\.site-footer\{[^}]*background:#fff[^}]*\}/);
+  assert.match(css, /\.footer-nav\{[^}]*display:flex[^}]*\}/);
+  assert.match(css, /\.footer-link\{[^}]*min-height:44px[^}]*\}/);
+  assert.match(css, /\.footer-link\[aria-current="page"\]\{[^}]*font-weight:700[^}]*\}/);
+
+  // Tablet/mobile media query adjustments to prevent awkward wrapping
+  assert.match(css, /\.footer-nav\{[^}]*gap:4px 6px/);
+  assert.match(css, /\.footer-link\{[^}]*padding:8px 4px/);
+  assert.match(css, /\.footer-sep\{[^}]*display:inline-flex/);
+
+  // Compact mobile media query for 360px and 320px viewports
+  assert.match(css, /@media\(max-width:360px\)/);
+  assert.match(css, /\.footer-nav\{[^}]*gap:2px 4px/);
+  assert.match(css, /\.footer-link\{[^}]*padding:6px 3px/);
+});
