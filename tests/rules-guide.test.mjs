@@ -142,6 +142,47 @@ test("Rules & Game Guide UI: SPA shell synchronization in index.html", async () 
   assert.match(rootHtml, /<a href="\.\/Games\/FiveWink\/" class="button" data-view="games\/fivewink">Play FiveWink<\/a>/);
 });
 
+test("Rules & Game Guide UI: All static HTML entry shells contain synchronized guide hub and no stale placeholder", async () => {
+  const shells = [
+    "../index.html",
+    "../rules/index.html",
+    "../about/index.html",
+    "../privacy/index.html",
+    "../privacy-policy/index.html",
+    "../contact/index.html",
+    "../Games/index.html",
+    "../Games/FiveWink/index.html",
+    "../Games/Game2/index.html",
+    "../Games/Game3/index.html"
+  ];
+
+  for (const shellPath of shells) {
+    const html = await readFile(new URL(shellPath, import.meta.url), "utf8");
+
+    // Must contain complete guide components
+    assert.match(html, /id="guide-fivewink"/, `${shellPath} must contain #guide-fivewink`);
+    assert.match(html, /id="guide-game2"/, `${shellPath} must contain #guide-game2`);
+    assert.match(html, /id="guide-game3"/, `${shellPath} must contain #guide-game3`);
+    assert.match(html, /id="pane-standard"/, `${shellPath} must contain standard pane`);
+    assert.match(html, /id="pane-strict"/, `${shellPath} must contain strict pane`);
+    assert.match(html, /id="pane-mindbender"/, `${shellPath} must contain mindbender pane`);
+    assert.match(html, /id="pane-expert"/, `${shellPath} must contain expert pane`);
+    assert.match(html, /id="pane-faq"/, `${shellPath} must contain faq pane`);
+
+    // Must NOT contain obsolete placeholder copy
+    assert.doesNotMatch(
+      html,
+      /General rules, solving tips, and gameplay instructions/i,
+      `${shellPath} must not contain obsolete rules placeholder`
+    );
+    assert.doesNotMatch(
+      html,
+      /published here in an upcoming update/i,
+      `${shellPath} must not contain obsolete rules placeholder`
+    );
+  }
+});
+
 test("Rules & Game Guide UI: Root-level guide-tab hashes resolve to rules route", () => {
   const guideHashes = [
     "strict",

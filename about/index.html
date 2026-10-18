@@ -110,14 +110,260 @@
           <nav class="breadcrumb" aria-label="Breadcrumb">
             <a href="../" class="back-link" data-view="home">← Back to Home</a>
           </nav>
-          <h1 id="rules-title">Game Rules</h1>
-        </div>
-        <div class="info-card">
-          <p>General rules, solving tips, and gameplay instructions for EmniFun puzzle games will be published here in an upcoming update.</p>
-          <p>For FiveWink, mode-specific rules and instructions can also be viewed directly in-game using the information button beside the mode selector.</p>
-          <div class="page-actions">
-            <a href="../" class="button secondary" data-view="home">Return to Home</a>
+          <div class="guide-header-title">
+            <h1 id="rules-title">Game Rules</h1>
+            <span class="guide-badge">Rules &amp; Game Guide</span>
           </div>
+        </div>
+
+        <div class="info-card guide-intro-card">
+          <p>Welcome to the EmniFun Game Guide. Here you can learn how each game works, understand its rules, and find answers to common questions.</p>
+          <p>Select a game below to explore its rules and player guide. Detailed instructions are available on each game's dedicated guide page. More game summaries and information will be added as EmniFun grows.</p>
+          <p class="guide-note"><em>Note: For FiveWink, mode-specific rules and instructions can also be viewed directly in-game using the information button beside the mode selector.</em></p>
+        </div>
+
+        <div class="guide-games-list">
+          <!-- 1. FiveWink Section -->
+          <details class="guide-card" id="guide-fivewink" open>
+            <summary class="guide-card-summary" aria-controls="fivewink-content">
+              <div class="guide-card-header">
+                <div class="guide-card-title-group">
+                  <span class="guide-card-icon" aria-hidden="true">💡</span>
+                  <div>
+                    <h2 class="guide-card-title">FiveWink</h2>
+                    <p class="guide-card-desc">Daily five-letter word deduction puzzle with clue assistance and challenge modes.</p>
+                  </div>
+                </div>
+                <div class="guide-card-meta">
+                  <span class="mode-pill selected">Playable</span>
+                  <span class="guide-expand-indicator" aria-hidden="true">▾</span>
+                </div>
+              </div>
+            </summary>
+            <div class="guide-card-content" id="fivewink-content">
+              <nav class="guide-submenu" aria-label="FiveWink rules and guide options" role="tablist">
+                <button type="button" class="guide-submenu-item active" data-guide-tab="standard" aria-selected="true" role="tab" id="tab-standard" aria-controls="pane-standard" tabindex="0">
+                  <span class="guide-submenu-num" aria-hidden="true">1</span>
+                  <span>Standard (Classic)</span>
+                  <span class="mode-pill selected">Playable</span>
+                </button>
+                <button type="button" class="guide-submenu-item" data-guide-tab="strict" aria-selected="false" role="tab" id="tab-strict" aria-controls="pane-strict" tabindex="-1">
+                  <span class="guide-submenu-num" aria-hidden="true">2</span>
+                  <span>Hard Mode: Strict</span>
+                  <span class="mode-pill mode-pill-strict">Playable</span>
+                </button>
+                <button type="button" class="guide-submenu-item" data-guide-tab="mindbender" aria-selected="false" role="tab" id="tab-mindbender" aria-controls="pane-mindbender" tabindex="-1">
+                  <span class="guide-submenu-num" aria-hidden="true">3</span>
+                  <span>Hard Mode: Mindbender</span>
+                  <span class="mode-pill coming-soon">Coming Soon</span>
+                </button>
+                <button type="button" class="guide-submenu-item" data-guide-tab="expert" aria-selected="false" role="tab" id="tab-expert" aria-controls="pane-expert" tabindex="-1">
+                  <span class="guide-submenu-num" aria-hidden="true">4</span>
+                  <span>Hard Mode: Expert</span>
+                  <span class="mode-pill coming-soon">Coming Soon</span>
+                </button>
+                <button type="button" class="guide-submenu-item" data-guide-tab="faq" aria-selected="false" role="tab" id="tab-faq" aria-controls="pane-faq" tabindex="-1">
+                  <span class="guide-submenu-num" aria-hidden="true">5</span>
+                  <span>Player Guide &amp; FAQ</span>
+                  <span class="mode-pill mode-pill-info">Guide &amp; FAQ</span>
+                </button>
+              </nav>
+
+              <!-- Option 1: Standard (Classic) -->
+              <div class="guide-pane active" id="pane-standard" data-pane="standard" role="tabpanel" tabindex="0" aria-labelledby="tab-standard">
+                <div class="guide-section-block">
+                  <h3>Standard (Classic) Mode <span class="mode-pill selected">Playable</span></h3>
+                  <p>In Standard mode, your goal is to deduce a hidden five-letter English word within <strong>6 normal attempts</strong>. Color-coded letter feedback guides your subsequent guesses.</p>
+
+                  <h4 style="margin:16px 0 8px;font-size:1.02rem;color:#1e293b;">Letter Evaluation Feedback</h4>
+                  <div class="guide-example-row">
+                    <div class="letter-cell correct" style="width:40px;height:40px;font-size:1.1rem;display:grid;place-items:center;">W</div>
+                    <span class="guide-example-label"><strong>Blue ("correct"):</strong> The letter is in the secret word and in the exact position.</span>
+                  </div>
+                  <div class="guide-example-row">
+                    <div class="letter-cell wrong-position" style="width:40px;height:40px;font-size:1.1rem;display:grid;place-items:center;">I</div>
+                    <span class="guide-example-label"><strong>Orange ("wrong-position"):</strong> The letter is in the secret word, but belongs in a different position.</span>
+                  </div>
+                  <div class="guide-example-row">
+                    <div class="letter-cell absent" style="width:40px;height:40px;font-size:1.1rem;display:grid;place-items:center;">N</div>
+                    <span class="guide-example-label"><strong>Gray ("absent"):</strong> The letter does not appear in the secret word (or duplicate count is exceeded).</span>
+                  </div>
+
+                  <h4 style="margin:16px 0 8px;font-size:1.02rem;color:#1e293b;">Duplicate Letters Rule</h4>
+                  <p>Evaluations use standard two-pass matching. Exact position matches are colored blue first. Remaining letters are matched left-to-right as orange up to the number of times the letter actually appears in the secret word. Any additional duplicate letters are marked gray.</p>
+
+                  <h4 style="margin:16px 0 8px;font-size:1.02rem;color:#1e293b;">Progressive Clue Assistance</h4>
+                  <p>Up to <strong>5 progressive clues</strong> can be revealed instead of taking a normal guess. Requesting a clue consumes that attempt row on your game board. Clues provide helpful contextual hints about the target word.</p>
+
+                  <h4 style="margin:16px 0 8px;font-size:1.02rem;color:#1e293b;">Optional 7th-Guess Stage</h4>
+                  <p>If all 6 normal attempts are used without solving the word, you enter the 7th-guess stage. You may enter a final guess or choose to skip. Solving on the 7th guess earns a <strong>Failed — Close</strong> result; an incorrect 7th guess or skip records a <strong>Failed — Hard</strong> result.</p>
+
+                  <h4 style="margin:16px 0 8px;font-size:1.02rem;color:#1e293b;">Mode Locking</h4>
+                  <p>You can change game modes before making any gameplay move. As soon as you submit your first guess or reveal your first clue, Standard mode locks for that puzzle session.</p>
+
+                  <h4 style="margin:16px 0 8px;font-size:1.02rem;color:#1e293b;">Authoritative Vocabulary</h4>
+                  <p>Every submitted guess must exist in EmniFun's authoritative 16,273 five-letter English vocabulary dictionary. Invalid words and random letters are rejected without penalizing your attempt count.</p>
+                </div>
+              </div>
+
+              <!-- Option 2: Hard Mode: Strict -->
+              <div class="guide-pane" id="pane-strict" data-pane="strict" role="tabpanel" tabindex="0" aria-labelledby="tab-strict" hidden>
+                <div class="guide-section-block">
+                  <h3>Hard Mode: Strict <span class="mode-pill mode-pill-strict">Playable</span></h3>
+                  <p>Hard Mode: Strict is an elevated challenge designed for solvers who prefer rigorous logical deduction without assistive hints. Every guess must strictly obey all previously uncovered constraints.</p>
+
+                  <h4 style="margin:16px 0 8px;font-size:1.02rem;color:#1e293b;">Clues Disabled</h4>
+                  <p>Progressive clues are <strong>not available</strong> in Hard Mode: Strict. All attempts must be made using pure word deduction.</p>
+
+                  <h4 style="margin:16px 0 8px;font-size:1.02rem;color:#1e293b;">Three Strict Deduction Constraints</h4>
+                  <p>Starting from your second guess, the game engine enforces three mandatory constraints on every submission:</p>
+                  <ol class="guide-rules-list">
+                    <li><strong>Exact Position Requirement (Blue Letters):</strong> Any letter confirmed blue in a previous guess must be used in the exact same position in all subsequent guesses.</li>
+                    <li><strong>Position Restriction (Orange Letters):</strong> A letter confirmed orange in a previous guess cannot be placed into any position where it was previously confirmed orange.</li>
+                    <li><strong>Letter Retention &amp; Multiplicity (Orange &amp; Blue):</strong> Any letter confirmed orange or blue must be present in the new guess. If an earlier guess confirmed multiple occurrences of a letter (e.g. two E's confirmed), all subsequent guesses must contain at least that many occurrences.</li>
+                  </ol>
+
+                  <h4 style="margin:16px 0 8px;font-size:1.02rem;color:#1e293b;">Validation Feedback &amp; Seventh Stage</h4>
+                  <p>If a candidate guess violates any strict constraint, an explanatory alert indicates which requirement was not met (e.g. <em>"Position 2 must be A"</em> or <em>"Letter E cannot be in position 3"</em>). The guess is rejected without consuming an attempt. If you reach the optional 7th-guess stage, your 7th guess must also satisfy all Hard Mode constraints.</p>
+
+                  <h4 style="margin:16px 0 8px;font-size:1.02rem;color:#1e293b;">Mode Locking</h4>
+                  <p>Selecting Hard Mode: Strict and submitting your first guess permanently locks your session into Hard Mode. Switching back to Standard mode is disabled for that daily puzzle.</p>
+                </div>
+              </div>
+
+              <!-- Option 3: Hard Mode: Mindbender -->
+              <div class="guide-pane" id="pane-mindbender" data-pane="mindbender" role="tabpanel" tabindex="0" aria-labelledby="tab-mindbender" hidden>
+                <div class="guide-coming-soon-box">
+                  <div class="guide-coming-soon-icon" aria-hidden="true">🧠</div>
+                  <h3>Hard Mode: Mindbender <span class="mode-pill coming-soon">Coming Soon</span></h3>
+                  <p>Mindbender is an upcoming intermediate hard mode currently in design.</p>
+                  <p>This mode is planned to introduce specialized deduction rules and letter-elimination challenges. Mindbender is not yet active for gameplay, and its complete rule set will be published when it enters testing.</p>
+                </div>
+              </div>
+
+              <!-- Option 4: Hard Mode: Expert -->
+              <div class="guide-pane" id="pane-expert" data-pane="expert" role="tabpanel" tabindex="0" aria-labelledby="tab-expert" hidden>
+                <div class="guide-coming-soon-box">
+                  <div class="guide-coming-soon-icon" aria-hidden="true">🎯</div>
+                  <h3>Hard Mode: Expert <span class="mode-pill coming-soon">Coming Soon</span></h3>
+                  <p>Expert is a master-tier deduction mode planned for advanced puzzle solvers.</p>
+                  <p>This mode is currently in the development roadmap and is not yet available for play. Exact rules, constraints, and mechanics will be announced upon release.</p>
+                </div>
+              </div>
+
+              <!-- Option 5: Player Guide & FAQ -->
+              <div class="guide-pane" id="pane-faq" data-pane="faq" role="tabpanel" tabindex="0" aria-labelledby="tab-faq" hidden>
+                <div class="guide-section-block">
+                  <h3>Player Guide &amp; FAQ <span class="mode-pill mode-pill-info">Verified &amp; Planned Details</span></h3>
+                  <p>Find answers to common questions about accounts, gameplay limits, device synchronization, and platform features.</p>
+
+                  <details class="guide-faq-item" open>
+                    <summary><span>Can I play FiveWink as a guest without creating an account?</span> <span class="badge-verified">Verified</span></summary>
+                    <p>Yes. Anyone can play FiveWink immediately without an account. Guest sessions and statistics are stored in your local browser session. Guests enjoy unlimited puzzle replays.</p>
+                  </details>
+
+                  <details class="guide-faq-item">
+                    <summary><span>How do puzzle attempts and replays work for logged-in accounts?</span> <span class="badge-verified">Verified</span></summary>
+                    <p>To preserve challenge integrity, authenticated players are limited to <strong>one official play per daily puzzle</strong>. Once a puzzle is completed while logged in, replay is locked, and your final result and solution are saved.</p>
+                  </details>
+
+                  <details class="guide-faq-item">
+                    <summary><span>Does my active game progress save if I refresh or switch devices?</span> <span class="badge-verified">Verified</span></summary>
+                    <p>Yes, for logged-in accounts. Your guesses, letter evaluations, and locked mode are synchronized with the cloud database in real time. If you switch devices or refresh, logging in resumes your in-progress puzzle.</p>
+                  </details>
+
+                  <details class="guide-faq-item">
+                    <summary><span>How does sign-in work? Do I need a password?</span> <span class="badge-verified">Verified</span></summary>
+                    <p>EmniFun uses passwordless Google Sign-In (Google Identity Services). Your account features a custom Gamer Tag and an encrypted Recovery Vault with two emergency recovery keys.</p>
+                  </details>
+
+                  <details class="guide-faq-item">
+                    <summary><span>What timezone is used for daily puzzle updates?</span> <span class="badge-verified">Verified</span></summary>
+                    <p>Daily puzzles follow canonical <strong>India Standard Time (IST — UTC+5:30)</strong>, updating each day at midnight (00:00 IST / 18:30 UTC).</p>
+                  </details>
+
+                  <details class="guide-faq-item">
+                    <summary><span>What dictionary is used for valid guesses?</span> <span class="badge-verified">Verified</span></summary>
+                    <p>FiveWink validates all guesses against a curated authoritative dictionary of 16,273 five-letter English words. Proper nouns and arbitrary letter combinations are rejected without penalizing an attempt.</p>
+                  </details>
+
+                  <details class="guide-faq-item">
+                    <summary><span>Can I replay past puzzles from previous days?</span> <span class="badge-unconfirmed">In Development</span></summary>
+                    <p>The Puzzle Archive Explorer is currently under development. In the future, authenticated accounts will be able to browse and replay past published puzzles.</p>
+                  </details>
+
+                  <details class="guide-faq-item">
+                    <summary><span>Are streaks and statistics synced permanently across devices?</span> <span class="badge-unconfirmed">In Development</span></summary>
+                    <p>In the current prototype, gameplay statistics are tracked within the active browser session. Persistent, cloud-synchronized player statistics across devices are planned for an upcoming release.</p>
+                  </details>
+
+                  <details class="guide-faq-item">
+                    <summary><span>Will there be multiplayer, friend challenges, or leaderboards?</span> <span class="badge-unconfirmed">Planned</span></summary>
+                    <p>Global leaderboards, speed challenges, and social play are on the EmniFun roadmap but are not yet implemented.</p>
+                  </details>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- 2. Game 2 Section -->
+          <details class="guide-card" id="guide-game2">
+            <summary class="guide-card-summary" aria-controls="game2-content">
+              <div class="guide-card-header">
+                <div class="guide-card-title-group">
+                  <span class="guide-card-icon" aria-hidden="true">🧩</span>
+                  <div>
+                    <h2 class="guide-card-title">Game 2</h2>
+                    <p class="guide-card-desc">An independent word and logic puzzle slot reserved for upcoming gameplay development.</p>
+                  </div>
+                </div>
+                <div class="guide-card-meta">
+                  <span class="mode-pill coming-soon">Coming Soon</span>
+                  <span class="guide-expand-indicator" aria-hidden="true">▾</span>
+                </div>
+              </div>
+            </summary>
+            <div class="guide-card-content" id="game2-content">
+              <div class="guide-coming-soon-box">
+                <div class="guide-coming-soon-icon" aria-hidden="true">⏳</div>
+                <h3>Game 2 — In Development</h3>
+                <p>This independent puzzle slot is currently under early development.</p>
+                <p>A comprehensive game summary, solving instructions, and detailed gameplay rules will be published here as soon as Game 2 is ready for public release.</p>
+              </div>
+            </div>
+          </details>
+
+          <!-- 3. Game 3 Section -->
+          <details class="guide-card" id="guide-game3">
+            <summary class="guide-card-summary" aria-controls="game3-content">
+              <div class="guide-card-header">
+                <div class="guide-card-title-group">
+                  <span class="guide-card-icon" aria-hidden="true">🎲</span>
+                  <div>
+                    <h2 class="guide-card-title">Game 3</h2>
+                    <p class="guide-card-desc">A third independent game slot reserved for future platform expansion.</p>
+                  </div>
+                </div>
+                <div class="guide-card-meta">
+                  <span class="mode-pill coming-soon">Coming Soon</span>
+                  <span class="guide-expand-indicator" aria-hidden="true">▾</span>
+                </div>
+              </div>
+            </summary>
+            <div class="guide-card-content" id="game3-content">
+              <div class="guide-coming-soon-box">
+                <div class="guide-coming-soon-icon" aria-hidden="true">⏳</div>
+                <h3>Game 3 — In Development</h3>
+                <p>This game slot is reserved for a future puzzle format.</p>
+                <p>A complete game summary and detailed player guide will be added here once game design and mechanics are finalized.</p>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <div class="page-actions" style="margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb;display:flex;gap:10px;flex-wrap:wrap;">
+          <a href="../" class="button secondary" data-view="home">Return to Home</a>
+          <a href="../Games/FiveWink/" class="button" data-view="games/fivewink">Play FiveWink</a>
         </div>
       </div>
     </section>

@@ -198,10 +198,12 @@ test("page shell layout: vertical height consistency and sticky footer structure
   assert.match(css, /\.view\.active\{[^}]*flex-direction:column[^}]*\}/);
   assert.match(css, /\.view\.active\{[^}]*flex:1 0 auto[^}]*\}/);
 
-  // page-shell must expand as a flex column
+  // page-shell must expand as a flex column with full responsive width matching main content
   assert.match(css, /\.page-shell\{[^}]*display:flex[^}]*\}/);
   assert.match(css, /\.page-shell\{[^}]*flex-direction:column[^}]*\}/);
   assert.match(css, /\.page-shell\{[^}]*flex:1 0 auto[^}]*\}/);
+  assert.match(css, /\.page-shell\{[^}]*width:100%[^}]*\}/);
+  assert.doesNotMatch(css, /\.page-shell\{[^}]*max-width:820px/);
 });
 
 test("footer navigation: responsive mobile wrapping consistency across informational pages", async () => {
@@ -213,7 +215,11 @@ test("footer navigation: responsive mobile wrapping consistency across informati
   assert.match(css, /\.footer-link\{[^}]*min-height:44px[^}]*\}/);
   assert.match(css, /\.footer-link\[aria-current="page"\]\{[^}]*font-weight:700[^}]*\}/);
 
-  // Tablet/mobile media query adjustments to prevent awkward wrapping
+  // Tablet/mobile media query adjustments to prevent awkward wrapping and ensure horizontal centering
+  assert.match(css, /\.footer-inner\{[^}]*align-items:center/);
+  assert.match(css, /\.footer-inner\{[^}]*text-align:center/);
+  assert.match(css, /\.footer-brand\{[^}]*text-align:center/);
+  assert.match(css, /\.footer-nav\{[^}]*justify-content:center/);
   assert.match(css, /\.footer-nav\{[^}]*gap:4px 6px/);
   assert.match(css, /\.footer-link\{[^}]*padding:8px 4px/);
   assert.match(css, /\.footer-sep\{[^}]*display:inline-flex/);
