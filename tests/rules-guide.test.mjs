@@ -10,12 +10,24 @@ test("Rules & Game Guide UI: Central page header, metadata, and intro shell", as
   assert.match(rulesHtml, /<title>Rules — EmniFun<\/title>/);
   assert.match(rulesHtml, /<h1[^>]*>Game Rules<\/h1>/);
 
-  // Guide badge and breadcrumb navigation
-  assert.match(rulesHtml, /class="back-link"/);
-  assert.match(rulesHtml, /class="guide-badge"/);
+  // Upper-left back-link and guide badge are removed from Rules page
+  const rulesSectionMatch = rulesHtml.match(/<section id="rules"[\s\S]*?<\/section>/);
+  const rulesSection = rulesSectionMatch ? rulesSectionMatch[0] : "";
+  const headerMatch = rulesSection.match(/<div class="page-header">[\s\S]*?<\/div>/);
+  assert.doesNotMatch(headerMatch ? headerMatch[0] : "", /class="back-link"/, "Rules header must not have back-link");
+  assert.doesNotMatch(rulesHtml, /class="guide-badge"/, "Rules page must not have guide-badge");
 
-  // Intro container shell
+  // Intro container shell with exact updated copy
   assert.match(rulesHtml, /class="[^"]*guide-intro-card[^"]*"/);
+  assert.match(
+    rulesHtml,
+    /Detailed instructions are available on each game's dedicated guide page\. Select a game below to explore its rules and player guide\./
+  );
+  assert.match(
+    rulesHtml,
+    /Note: Mode-specific rules and instructions are also available in-game through the information button beside the mode selector\./
+  );
+  assert.doesNotMatch(rulesHtml, /More game summaries and information will be added as EmniFun grows/);
 });
 
 test("Rules & Game Guide UI: Three consistent game cards layout", async () => {
@@ -26,12 +38,16 @@ test("Rules & Game Guide UI: Three consistent game cards layout", async () => {
   assert.match(rulesHtml, /<details class="guide-card" id="guide-game2">/);
   assert.match(rulesHtml, /<details class="guide-card" id="guide-game3">/);
 
-  // All 3 cards have summary, header, title-group, icon, title, description, and meta
-  for (const gameId of ["guide-fivewink", "guide-game2", "guide-game3"]) {
+  // FiveWink card header has summary, title-group, icon, title, description, and expand indicator (no mode-pill)
+  const fivewinkHeaderRegex = /<details class="guide-card" id="guide-fivewink"[\s\S]*?<summary class="guide-card-summary"[\s\S]*?<div class="guide-card-header"[\s\S]*?<div class="guide-card-title-group"[\s\S]*?<span class="guide-card-icon"[\s\S]*?<h2 class="guide-card-title"[\s\S]*?<p class="guide-card-desc"[\s\S]*?<div class="guide-card-meta"[\s\S]*?<span class="guide-expand-indicator"/;
+  assert.match(rulesHtml, fivewinkHeaderRegex, "guide-fivewink must have consistent card header elements");
+
+  // Game 2 and Game 3 retain mode-pill coming-soon in their headers
+  for (const gameId of ["guide-game2", "guide-game3"]) {
     const cardRegex = new RegExp(
-      `<details class="guide-card" id="${gameId}"[\\s\\S]*?<summary class="guide-card-summary"[\\s\\S]*?<div class="guide-card-header"[\\s\\S]*?<div class="guide-card-title-group"[\\s\\S]*?<span class="guide-card-icon"[\\s\\S]*?<h2 class="guide-card-title"[\\s\\S]*?<p class="guide-card-desc"[\\s\\S]*?<div class="guide-card-meta"[\\s\\S]*?<span class="mode-pill[\\s\\S]*?<span class="guide-expand-indicator"`
+      `<details class="guide-card" id="${gameId}"[\\s\\S]*?<summary class="guide-card-summary"[\\s\\S]*?<div class="guide-card-header"[\\s\\S]*?<div class="guide-card-title-group"[\\s\\S]*?<span class="guide-card-icon"[\\s\\S]*?<h2 class="guide-card-title"[\\s\\S]*?<p class="guide-card-desc"[\\s\\S]*?<div class="guide-card-meta"[\\s\\S]*?<span class="mode-pill coming-soon"[\\s\\S]*?<span class="guide-expand-indicator"`
     );
-    assert.match(rulesHtml, cardRegex, `${gameId} must have consistent card header elements`);
+    assert.match(rulesHtml, cardRegex, `${gameId} must have consistent card header elements with Coming Soon badge`);
   }
 
   // Titles for all three cards
@@ -68,9 +84,14 @@ test("Rules & Game Guide UI: FiveWink submenu has exactly five options in order"
   assert.ok(mindbenderIdx < expertIdx, "Mindbender must precede Expert");
   assert.ok(expertIdx < faqIdx, "Expert must precede Player Guide & FAQ");
 
-  // Each tab has a numbered indicator and status pill
+  // Each tab has a numbered indicator and mode title (redundant status pills removed)
   const tabMatches = rulesHtml.match(/class="guide-submenu-item[^"]*"[^>]*data-guide-tab="/g);
   assert.equal(tabMatches?.length, 5, "Submenu must contain exactly 5 tab buttons");
+  assert.doesNotMatch(
+    rulesHtml.substring(rulesHtml.indexOf('class="guide-submenu"'), rulesHtml.indexOf('</nav>')),
+    /class="mode-pill"/,
+    "Submenu tab buttons must not contain mode-pill status badges"
+  );
 });
 
 test("Rules & Game Guide UI: WAI-ARIA tab semantics, relationships, and initial states", async () => {
@@ -180,6 +201,40 @@ test("Rules & Game Guide UI: All static HTML entry shells contain synchronized g
       /published here in an upcoming update/i,
       `${shellPath} must not contain obsolete rules placeholder`
     );
+
+    // Must NOT contain removed guide-badge
+    assert.doesNotMatch(html, /class="guide-badge"/, `${shellPath} must not contain guide-badge`);
+
+    // Must contain exact updated intro text and note
+    assert.match(
+      html,
+      /Detailed instructions are available on each game's dedicated guide page\. Select a game below to explore its rules and player guide\./,
+      `${shellPath} must contain exact updated intro paragraph`
+    );
+    assert.match(
+      html,
+      /Note: Mode-specific rules and instructions are also available in-game through the information button beside the mode selector\./,
+      `${shellPath} must contain exact updated note`
+    );
+
+    // Must NOT have back-link in #rules .page-header
+    const rulesSectionMatch = html.match(/<section id="rules"[\s\S]*?<\/section>/);
+    assert.ok(rulesSectionMatch, `${shellPath} must contain #rules section`);
+    const headerMatch = rulesSectionMatch[0].match(/<div class="page-header">[\s\S]*?<\/div>/);
+    assert.doesNotMatch(
+      headerMatch ? headerMatch[0] : "",
+      /class="back-link"/,
+      `${shellPath} must not have back-link in #rules header`
+    );
+
+    // FiveWink summary and FiveWink submenu tabs must not have mode-pill badges
+    const fivewinkSummaryMatch = rulesSectionMatch[0].match(/<details class="guide-card" id="guide-fivewink"[^>]*>([\s\S]*?)<\/summary>/);
+    assert.ok(fivewinkSummaryMatch, `${shellPath} must contain FiveWink summary`);
+    assert.doesNotMatch(fivewinkSummaryMatch[1], /class="mode-pill"/, `${shellPath} FiveWink summary must not have mode-pill`);
+
+    const submenuMatch = rulesSectionMatch[0].match(/<nav class="guide-submenu"[\s\S]*?<\/nav>/);
+    assert.ok(submenuMatch, `${shellPath} must contain FiveWink submenu`);
+    assert.doesNotMatch(submenuMatch[0], /class="mode-pill"/, `${shellPath} FiveWink tabs must not have mode-pill badges`);
   }
 });
 
