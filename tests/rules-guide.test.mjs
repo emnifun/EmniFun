@@ -33,22 +33,29 @@ test("Rules & Game Guide UI: Central page header, metadata, and intro shell", as
 test("Rules & Game Guide UI: Three consistent game cards layout", async () => {
   const rulesHtml = await readFile(new URL("../rules/index.html", import.meta.url), "utf8");
 
-  // All 3 expandable sections exist as details/summary disclosure cards
-  assert.match(rulesHtml, /<details class="guide-card" id="guide-fivewink"[^>]*open>/);
+  // All 3 expandable sections exist as details/summary disclosure cards (FiveWink collapsed by default)
+  assert.match(rulesHtml, /<details class="guide-card" id="guide-fivewink">/);
+  assert.doesNotMatch(rulesHtml, /<details class="guide-card" id="guide-fivewink"[^>]*open/);
   assert.match(rulesHtml, /<details class="guide-card" id="guide-game2">/);
   assert.match(rulesHtml, /<details class="guide-card" id="guide-game3">/);
 
-  // FiveWink card header has summary, title-group, icon, title, description, and expand indicator (no mode-pill)
-  const fivewinkHeaderRegex = /<details class="guide-card" id="guide-fivewink"[\s\S]*?<summary class="guide-card-summary"[\s\S]*?<div class="guide-card-header"[\s\S]*?<div class="guide-card-title-group"[\s\S]*?<span class="guide-card-icon"[\s\S]*?<h2 class="guide-card-title"[\s\S]*?<p class="guide-card-desc"[\s\S]*?<div class="guide-card-meta"[\s\S]*?<span class="guide-expand-indicator"/;
+  // FiveWink card header has summary, title-group, icon, title, and expand indicator (no tagline, no mode-pill)
+  const fivewinkHeaderRegex = /<details class="guide-card" id="guide-fivewink"[\s\S]*?<summary class="guide-card-summary"[\s\S]*?<div class="guide-card-header"[\s\S]*?<div class="guide-card-title-group"[\s\S]*?<span class="guide-card-icon"[\s\S]*?<h2 class="guide-card-title"[\s\S]*?<div class="guide-card-meta"[\s\S]*?<span class="guide-expand-indicator"/;
   assert.match(rulesHtml, fivewinkHeaderRegex, "guide-fivewink must have consistent card header elements");
 
-  // Game 2 and Game 3 retain mode-pill coming-soon in their headers
+  // Game 2 and Game 3 retain mode-pill coming-soon in their headers (no taglines)
   for (const gameId of ["guide-game2", "guide-game3"]) {
     const cardRegex = new RegExp(
-      `<details class="guide-card" id="${gameId}"[\\s\\S]*?<summary class="guide-card-summary"[\\s\\S]*?<div class="guide-card-header"[\\s\\S]*?<div class="guide-card-title-group"[\\s\\S]*?<span class="guide-card-icon"[\\s\\S]*?<h2 class="guide-card-title"[\\s\\S]*?<p class="guide-card-desc"[\\s\\S]*?<div class="guide-card-meta"[\\s\\S]*?<span class="mode-pill coming-soon"[\\s\\S]*?<span class="guide-expand-indicator"`
+      `<details class="guide-card" id="${gameId}"[\\s\\S]*?<summary class="guide-card-summary"[\\s\\S]*?<div class="guide-card-header"[\\s\\S]*?<div class="guide-card-title-group"[\\s\\S]*?<span class="guide-card-icon"[\\s\\S]*?<h2 class="guide-card-title"[\\s\\S]*?<div class="guide-card-meta"[\\s\\S]*?<span class="mode-pill coming-soon"[\\s\\S]*?<span class="guide-expand-indicator"`
     );
     assert.match(rulesHtml, cardRegex, `${gameId} must have consistent card header elements with Coming Soon badge`);
   }
+
+  // Taglines removed from all card headers
+  assert.doesNotMatch(rulesHtml, /class="guide-card-desc"/);
+  assert.doesNotMatch(rulesHtml, /Daily five-letter word deduction puzzle/);
+  assert.doesNotMatch(rulesHtml, /An independent word and logic puzzle slot reserved/);
+  assert.doesNotMatch(rulesHtml, /A third independent game slot reserved/);
 
   // Titles for all three cards
   assert.match(rulesHtml, /<h2 class="guide-card-title">FiveWink<\/h2>/);
@@ -231,6 +238,13 @@ test("Rules & Game Guide UI: All static HTML entry shells contain synchronized g
     const fivewinkSummaryMatch = rulesSectionMatch[0].match(/<details class="guide-card" id="guide-fivewink"[^>]*>([\s\S]*?)<\/summary>/);
     assert.ok(fivewinkSummaryMatch, `${shellPath} must contain FiveWink summary`);
     assert.doesNotMatch(fivewinkSummaryMatch[1], /class="mode-pill"/, `${shellPath} FiveWink summary must not have mode-pill`);
+
+    // FiveWink collapsed by default in static HTML shell
+    assert.match(rulesSectionMatch[0], /<details class="guide-card" id="guide-fivewink">/, `${shellPath} FiveWink must be collapsed by default`);
+    assert.doesNotMatch(rulesSectionMatch[0], /<details class="guide-card" id="guide-fivewink"[^>]*open/, `${shellPath} FiveWink must not have open attribute`);
+
+    // No card taglines in any shell
+    assert.doesNotMatch(rulesSectionMatch[0], /class="guide-card-desc"/, `${shellPath} must not contain guide-card-desc`);
 
     const submenuMatch = rulesSectionMatch[0].match(/<nav class="guide-submenu"[\s\S]*?<\/nav>/);
     assert.ok(submenuMatch, `${shellPath} must contain FiveWink submenu`);
